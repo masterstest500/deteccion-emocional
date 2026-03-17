@@ -75,52 +75,6 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 # ================================================================
-# UTILIDADES DE SEGURIDAD Y GENERALES (FASE 1)
-# ================================================================
-
-def generar_hash(password: str):
-    """Convierte texto plano en un código seguro (SHA-256)."""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def img_to_base64(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except:
-        return ""
-
-# [EL RESTO DE TUS UTILIDADES: df_to_csv_bytes, export_all_tables_zip_bytes, etc., SE MANTIENEN IGUAL]
-def df_to_csv_bytes(df):
-    return df.to_csv(index=False).encode("utf-8")
-
-def export_all_tables_zip_bytes():
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
-        for table in ["usuarios", "encuestas", "resultados"]:
-            conn = get_conn()
-            try:
-                df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
-                z.writestr(f"{table}.csv", df.to_csv(index=False))
-            except Exception:
-                z.writestr(f"{table}.csv", "/* Sin datos */")
-            finally:
-                conn.close()
-    buffer.seek(0)
-    return buffer.getvalue()
-
-def safe_json_load(s):
-    try:
-        return json.loads(s)
-    except Exception:
-        return {}
-
-def safe_float(value, default=0.0):
-    try:
-        return float(value) 
-    except (TypeError, ValueError):
-        return default
-
-# ================================================================
 # INICIALIZACIÓN DE ESTADOS DE SESIÓN (SIN CAMBIOS)
 # ================================================================
 
@@ -142,12 +96,6 @@ if "menu_estudiante" not in st.session_state:
     st.session_state.menu_estudiante = "Registrar encuesta"
 if "menu_docente" not in st.session_state:
     st.session_state.menu_docente = "Panel docente"
-if "logo_clicked" not in st.session_state:
-    st.session_state.logo_clicked = False
-
-# [AQUÍ SIGUE TU CSS Y EL RESTO DE TU CÓDIGO ORIGINAL...]
-
-# Estados de UI
 if "logo_clicked" not in st.session_state:
     st.session_state.logo_clicked = False
 
@@ -178,7 +126,7 @@ st.markdown("""
     /* Contenido principal */
     .main {
         padding-left: 210px !important;
-        overflow-y: hidden !important;
+        overflow-y: auto !important;
     }
     
     /* Ocultar botones de colapsar */
@@ -370,18 +318,20 @@ def get_questions_by_level(nivel: str):
 
     else:  # UNIVERSIDAD
         return [
-            {"id": "estres", "tipo": "likert", "texto": "Nivel de estrés académico"},
-            {"id": "fatiga", "tipo": "likert", "texto": "Fatiga mental reciente"},
-            {"id": "presion", "tipo": "likert", "texto": "Autoexigencia y perfeccionismo"},
-            {"id": "burnout", "tipo": "likert", "texto": "Sensación de agotamiento (burnout)"},
-            {"id": "suenio", "tipo": "likert", "texto": "Calidad del sueño"},
-            {"id": "social", "tipo": "likert", "texto": "Conexión social / apoyo"},
-            {"id": "poms_tension", "tipo": "likert", "texto": "Tensión (POMS)"},
-            {"id": "poms_depresion", "tipo": "likert", "texto": "Depresión (POMS)"},
-            {"id": "poms_fatiga", "tipo": "likert", "texto": "Fatiga (POMS)"},
-            {"id": "poms_vigor", "tipo": "likert", "texto": "Vigor (POMS, invertido)"},
-            {"id": "texto", "tipo": "texto", "texto": "Describe cómo te sientes (opcional)"}
-        ]
+        {"id": "estres", "tipo": "likert", "texto": "Nivel de estrés académico"},
+        {"id": "fatiga", "tipo": "likert", "texto": "Fatiga mental reciente"},
+        {"id": "presion", "tipo": "likert", "texto": "Autoexigencia y perfeccionismo"},
+        {"id": "burnout", "tipo": "likert", "texto": "Sensación de agotamiento (burnout)"},
+        {"id": "suenio", "tipo": "likert", "texto": "Calidad del sueño"},
+        {"id": "social", "tipo": "likert", "texto": "Conexión social / apoyo"},
+        {"id": "poms_tension", "tipo": "likert", "texto": "Tensión (POMS)"},
+        {"id": "poms_depresion", "tipo": "likert", "texto": "Depresión (POMS)"},
+        {"id": "poms_fatiga", "tipo": "likert", "texto": "Fatiga (POMS)"},
+        {"id": "poms_vigor", "tipo": "likert", "texto": "Vigor (POMS, invertido)"},
+        {"id": "valence_raw", "tipo": "likert_9", "texto": "¿Cómo describes tu estado emocional ahora mismo? (1=muy negativo, 9=muy positivo)"},
+        {"id": "arousal_raw", "tipo": "likert_9", "texto": "¿Cuál es tu nivel de activación o energía ahora mismo? (1=muy tranquilo, 9=muy activado)"},
+        {"id": "texto", "tipo": "texto", "texto": "Describe cómo te sientes (opcional)"}
+    ]
 
 def render_questions_by_level(questions):
     respuestas = {}
@@ -397,10 +347,17 @@ def render_questions_by_level(questions):
         elif q["tipo"] == "texto":
             respuestas[q["id"]] = st.text_area(q["texto"], height=100)
 
+        elif q["tipo"] == "likert_9":
+            respuestas[q["id"]] = st.slider(q["texto"], 1, 9, 5)
+
     return respuestas
 
 def process_results_by_level(nivel, respuestas, analisis_texto):
     polarity, subjectivity, neg_count = analisis_texto
+    # VA por defecto para Primaria y Secundaria
+
+    valence_calc = round((polarity + 1) / 2 * 2 - 1, 3)
+    arousal_calc = round(subjectivity, 3)
 
     # -------------------------
     # PRIMARIA
@@ -450,6 +407,11 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
         poms_score = (poms["tension"] + poms["depression"] + poms["fatigue"] + poms["vigor"]) / 4
 
         puntaje = base * 0.8 + poms_score * 0.8 + (1 - polarity) * 0.2 + neg_count * 0.2
+       
+        # Calcular VA real
+        valence_raw = respuestas.get("valence_raw", 5)
+        arousal_raw = respuestas.get("arousal_raw", 5)
+        valence_calc, arousal_calc = normalize_va(valence_raw, arousal_raw)
 
     # Clasificación final
     if puntaje >= 4.0:
@@ -459,7 +421,7 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
     else:
         riesgo = "Bajo"
 
-    return puntaje, riesgo
+    return puntaje, riesgo, valence_calc, arousal_calc
 
 # ================================================================
 # LANDING PAGE
@@ -1108,64 +1070,43 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             
             # Mostrar análisis según nivel de riesgo
             if riesgo_clave == "alto":
-                with st.container():
-                    st.markdown("""
-                    <div style='
-                        background: linear-gradient(135deg, rgba(255,68,68,0.08), rgba(255,68,68,0.03));
-                        border-left: 4px solid #ff4444;
-                        padding: 20px;
-                        border-radius: 10px;
-                        margin: 15px 0;
-                    '>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown(f"**📋 ANÁLISIS DETALLADO:**\n\n{rec_data['analisis']}")
-                    st.markdown("---")
-                    st.markdown("**🎯 RECOMENDACIONES ESPECÍFICAS:**")
-                    for rec in rec_data['recomendaciones']:
-                        st.markdown(f"- {rec}")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                contenido_html = f"""
+                <div style='background:rgba(255,68,68,0.08);border-left:4px solid #ff4444;
+                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
+                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
+                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <hr>
+                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
+                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
+                </div>
+                """
+                st.markdown(contenido_html, unsafe_allow_html=True)
                     
             elif riesgo_clave == "medio":
-                with st.container():
-                    st.markdown("""
-                    <div style='
-                        background: linear-gradient(135deg, rgba(255,170,68,0.08), rgba(255,170,68,0.03));
-                        border-left: 4px solid #ffaa44;
-                        padding: 20px;
-                        border-radius: 10px;
-                        margin: 15px 0;
-                    '>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown(f"**📋 ANÁLISIS DETALLADO:**\n\n{rec_data['analisis']}")
-                    st.markdown("---")
-                    st.markdown("**🎯 RECOMENDACIONES ESPECÍFICAS:**")
-                    for rec in rec_data['recomendaciones']:
-                        st.markdown(f"- {rec}")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                contenido_html = f"""
+                <div style='background:rgba(255,170,68,0.08);border-left:4px solid #ffaa44;
+                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
+                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
+                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <hr>
+                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
+                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
+                </div>
+                """
+                st.markdown(contenido_html, unsafe_allow_html=True)
                     
             else:  # bajo
-                with st.container():
-                    st.markdown("""
-                    <div style='
-                        background: linear-gradient(135deg, rgba(68,204,68,0.08), rgba(68,204,68,0.03));
-                        border-left: 4px solid #44cc44;
-                        padding: 20px;
-                        border-radius: 10px;
-                        margin: 15px 0;
-                    '>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown(f"**📋 ANÁLISIS DETALLADO:**\n\n{rec_data['analisis']}")
-                    st.markdown("---")
-                    st.markdown("**🎯 RECOMENDACIONES ESPECÍFICAS:**")
-                    for rec in rec_data['recomendaciones']:
-                        st.markdown(f"- {rec}")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                contenido_html = f"""
+                <div style='background:rgba(68,204,68,0.08);border-left:4px solid #44cc44;
+                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
+                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
+                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <hr>
+                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
+                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
+                </div>
+                """
+                st.markdown(contenido_html, unsafe_allow_html=True)
         else:
             st.info(f"**Análisis General:** Perfil '{perfil_mapeado}' con riesgo {riesgo}. Se aplican recomendaciones estándar.")
     else:
@@ -2542,24 +2483,21 @@ if rol_seleccionado == "Estudiante":
         else:
             st.title("📝 Registro de Encuesta")
             
-            with st.form("registro_form"):
-                st.subheader("Información básica")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    edad = st.number_input("Edad", min_value=5, max_value=80, value=15, step=1)
-                with col2:
-                    nivel = st.selectbox(
-                        "Nivel educativo",
+            # Selector de nivel FUERA del formulario para que recargue las preguntas
+            col1, col2 = st.columns(2)
+            with col1:
+                edad = st.number_input("Edad", min_value=5, max_value=80, value=15, step=1)
+            with col2:
+                nivel = st.selectbox(
+                    "Nivel educativo",
                         ["Primaria", "Secundaria", "Universidad"],
-                        index=0,
-                        key="nivel_usuario"
-                    )
-                
-                st.markdown("---")
+                index=0,
+                key="nivel_usuario"
+                )
+
+            with st.form("registro_form"):
                 st.subheader("Encuesta de bienestar")
-                
-                # Obtener preguntas según nivel
+    
                 questions = get_questions_by_level(nivel)
                 respuestas = render_questions_by_level(questions)
                 
@@ -2572,7 +2510,7 @@ if rol_seleccionado == "Estudiante":
                         polarity, subjectivity, neg_count = analyze_text_advanced(texto)
                         
                         # Procesar resultados según nivel
-                        puntaje, riesgo = process_results_by_level(nivel, respuestas, (polarity, subjectivity, neg_count))
+                        puntaje, riesgo, valence_calc, arousal_calc = process_results_by_level(nivel, respuestas, (polarity, subjectivity, neg_count))
                         
                         # Calcular POMS si es nivel Universidad
                         poms_scores = {}
@@ -2607,7 +2545,7 @@ if rol_seleccionado == "Estudiante":
                             "Promedio": puntaje,
                             "Riesgo": riesgo,
                             "POMS": poms_scores,
-                            "VA": {"valence": 0.0, "arousal": 0.5}  # Placeholder para VA
+                            "VA": {"valence": valence_calc, "arousal": arousal_calc}
                         }
                         
                         # Guardar en base de datos
