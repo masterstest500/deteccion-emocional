@@ -263,23 +263,39 @@ def normalize_va(valence_raw: int, arousal_raw: int, v_min=1, v_max=9, a_min=1, 
 # Perfiles emocionales (simple heuristics, NO DIAGNÓSTICO)
 # ================================================================
 
-def classify_profile(promedio_encuesta: float, polarity: float, subj: float, poms_scores: dict, neg_words:int):
+def classify_profile(promedio_encuesta: float, polarity: float, subj: float, poms_scores: dict, neg_words: int):
     """
-    Retorna un perfil simple: 'Resiliente', 'Estrés', 'Fatigado', 'Inestable', 'Riesgo neuro-afectivo'
-    * Esto es heurístico y orientativo, no diagnóstico clínico.
+    Clasifica el perfil emocional basado en escala 0-1.
+    NO es diagnóstico clínico — es orientativo y preventivo.
     """
-    # heurísticas simples
-    # prioridad a combinaciones más claras
-    if promedio_encuesta >= 4.5 and polarity >= 0 and poms_scores.get("vigor",0) >= 0.6:
+    vigor   = poms_scores.get("vigor", 0.5)
+    fatigue = poms_scores.get("fatigue", 0.5)
+    tension = poms_scores.get("tension", 0.5)
+    depression = poms_scores.get("depression", 0.5)
+
+    # Resiliente: bajo malestar general, buen vigor, texto positivo
+    if promedio_encuesta <= 0.40 and polarity >= 0 and vigor >= 0.5:
         return "Resiliente"
-    if poms_scores.get("fatigue",0) >= 0.6 and promedio_encuesta >= 4:
+
+    # Fatigado: fatiga alta, malestar moderado-alto
+    if fatigue >= 0.55 and promedio_encuesta >= 0.40:
         return "Fatigado"
-    if promedio_encuesta >= 4 and (poms_scores.get("tension",0) >= 0.5 or neg_words >= 3):
+
+    # Estrés/Ansioso: tensión alta o muchas palabras negativas
+    if tension >= 0.45 or neg_words >= 2:
         return "Estrés"
-    if subj >= 0.7 and abs(polarity) < 0.15:
+
+    # Inestable emocional: muy subjetivo pero sin polaridad clara
+    if subj >= 0.60 and abs(polarity) < 0.20:
         return "Inestable emocional"
-    if (poms_scores.get("depression",0) >= 0.5 and polarity < -0.2) or (neg_words >= 4 and promedio_encuesta >= 4.2):
+
+    # Riesgo neuro-afectivo: depresión alta + texto negativo
+    if depression >= 0.45 and polarity < -0.15:
         return "Riesgo neuro-afectivo"
+    if neg_words >= 3 and promedio_encuesta >= 0.55:
+        return "Riesgo neuro-afectivo"
+
+    # Perfil mixto: señales mixtas sin patrón claro
     return "Perfil mixto"
 
 # ================================================================
@@ -354,8 +370,8 @@ def render_questions_by_level(questions):
 
 def process_results_by_level(nivel, respuestas, analisis_texto):
     polarity, subjectivity, neg_count = analisis_texto
-    # VA por defecto para Primaria y Secundaria
 
+    # VA por defecto para Primaria y Secundaria
     valence_calc = round((polarity + 1) / 2 * 2 - 1, 3)
     arousal_calc = round(subjectivity, 3)
 
@@ -363,28 +379,40 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
     # PRIMARIA
     # -------------------------
     if nivel == "Primaria":
-        # Convertir caritas a números
-        mapa_caritas = {"😀":1,"🙂":2,"😐":3,"🙁":4,"😢":5,
-                        "⚡":1,"🙂":2,"😐":3,"🥱":4,"😴":5}
-
-        emoscore = mapa_caritas.get(respuestas["emocion"], 3)
+        mapa_caritas = {
+            "😀":1,"🙂":2,"😐":3,"🙁":4,"😢":5,
+            "⚡":1,"🙂":2,"😐":3,"🥱":4,"😴":5
+        }
+        emoscore   = mapa_caritas.get(respuestas["emocion"], 3)
         energiascore = mapa_caritas.get(respuestas["energia"], 3)
-
         conviv = respuestas["convivencia"]
-        segur = respuestas["seguridad"]
+        segur  = respuestas["seguridad"]
 
-        promedio = (emoscore + energiascore + conviv + segur) / 4
+        # Promedio 1-5, normalizado a 0-1
+        promedio_raw = (emoscore + energiascore + conviv + segur) / 4
+        promedio_norm = (promedio_raw - 1) / 4  # 0=mejor, 1=peor
 
-        puntaje = promedio * 1.5 + neg_count * 0.5 + (1 - polarity) * 0.3
+        # Penalización por texto negativo (peso reducido)
+        texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
+
+        puntaje = promedio_norm + texto_penalty
 
     # -------------------------
     # SECUNDARIA
     # -------------------------
     elif nivel == "Secundaria":
         q = respuestas
-        likerts = (q["estres"] + (6-q["animo"]) + q["presion"] + (6-q["sueno"]) + (6-q["conexion"])) / 5
+        # Normalizar cada item a 0-1 (algunos invertidos: mayor = mejor)
+        estres_n    = (q["estres"] - 1) / 4
+        animo_n     = (5 - q["animo"]) / 4      # invertido
+        presion_n   = (q["presion"] - 1) / 4
+        sueno_n     = (5 - q["sueno"]) / 4       # invertido
+        conexion_n  = (5 - q["conexion"]) / 4    # invertido
 
-        puntaje = likerts * 1.2 + (1 - polarity) * 0.4 + neg_count * 0.4
+        promedio_norm = (estres_n + animo_n + presion_n + sueno_n + conexion_n) / 5
+        texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
+
+        puntaje = promedio_norm + texto_penalty
 
     # -------------------------
     # UNIVERSIDAD
@@ -392,31 +420,41 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
     else:
         q = respuestas
 
-        base = (
-            q["estres"] + q["fatiga"] + q["presion"] + q["burnout"] +
-            (6-q["suenio"]) + (6-q["social"])
-        ) / 6
+        # Normalizar base a 0-1
+        estres_n  = (q["estres"] - 1) / 4
+        fatiga_n  = (q["fatiga"] - 1) / 4
+        presion_n = (q["presion"] - 1) / 4
+        burnout_n = (q["burnout"] - 1) / 4
+        suenio_n  = (5 - q["suenio"]) / 4    # invertido
+        social_n  = (5 - q["social"]) / 4    # invertido
 
-        poms = {
-            "tension": q["poms_tension"],
-            "depression": q["poms_depresion"],
-            "fatigue": q["poms_fatiga"],
-            "vigor": (6-q["poms_vigor"])
-        }
+        base_norm = (estres_n + fatiga_n + presion_n + burnout_n + suenio_n + social_n) / 6
 
-        poms_score = (poms["tension"] + poms["depression"] + poms["fatigue"] + poms["vigor"]) / 4
+        # Normalizar POMS a 0-1
+        tension_n    = (q["poms_tension"] - 1) / 4
+        depresion_n  = (q["poms_depresion"] - 1) / 4
+        fatiga_p_n   = (q["poms_fatiga"] - 1) / 4
+        vigor_n      = (5 - q["poms_vigor"]) / 4   # invertido
 
-        puntaje = base * 0.8 + poms_score * 0.8 + (1 - polarity) * 0.2 + neg_count * 0.2
-       
-        # Calcular VA real
+        poms_norm = (tension_n + depresion_n + fatiga_p_n + vigor_n) / 4
+
+        # Penalización texto
+        texto_penalty = (neg_count * 0.03) + ((1 - polarity) * 0.03)
+
+        # Puntaje final 0-1 (base 70%, POMS 30%)
+        puntaje = (base_norm * 0.70) + (poms_norm * 0.30) + texto_penalty
+
+        # VA real
         valence_raw = respuestas.get("valence_raw", 5)
         arousal_raw = respuestas.get("arousal_raw", 5)
         valence_calc, arousal_calc = normalize_va(valence_raw, arousal_raw)
 
-    # Clasificación final
-    if puntaje >= 4.0:
+    # -------------------------
+    # Clasificación final (escala 0-1)
+    # -------------------------
+    if puntaje >= 0.65:
         riesgo = "Alto"
-    elif puntaje >= 2.5:
+    elif puntaje >= 0.40:
         riesgo = "Medio"
     else:
         riesgo = "Bajo"
@@ -849,6 +887,16 @@ def logout():
     # Usar bandera para rerun seguro
     st.session_state.needs_rerun = True
 
+
+
+
+def md_to_html(text: str) -> str:
+    """Convierte markdown básico (**negrita**) a HTML para usar dentro de divs."""
+    import re
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    return text
+
 # ================================================================
 # FUNCIÓN AUXILIAR DE REPORTE INDIVIDUAL
 # ================================================================
@@ -1043,7 +1091,107 @@ def show_single_report(riesgo, perfil, detalle_param =None):
                     "🌿 **Técnicas Recarga:** Respiración diafragmática breve"
                 ]
             }
+        },
+
+        "Inestable emocional": {
+            "alto": {
+                "titulo": "🎭 Inestabilidad Emocional Severa",
+                "analisis": f"**Análisis Psicológico:** Alta subjetividad emocional ({subjectivity:.2f}/1.0) con polaridad indefinida. El sistema límbico muestra activación errática sin patrón claro de regulación. Posible disregulación emocional por sobrecarga cognitiva.\n\n**Bases Neurocientíficas:** La corteza prefrontal ventromedial, responsable de integrar emoción y cognición, muestra señales de sobrecarga. El circuito amígdala-hipocampo puede estar generando respuestas emocionales desproporcionadas al contexto.",
+                "recomendaciones": [
+                    "🆘 **Apoyo Profesional:** Consulta con orientador o psicólogo",
+                    "📓 **Diario Emocional:** Registra emociones 3 veces al día para identificar patrones",
+                    "🌬️ **Regulación Autonómica:** Respiración diafragmática 4-4-4 (inhalar, retener, exhalar)",
+                    "📵 **Reducción de Estímulos:** Limita exposición a redes sociales a 30 min/día"
+                ]
+            },
+            "medio": {
+                "titulo": "🎭 Variabilidad Emocional Moderada",
+                "analisis": f"**Análisis Psicológico:** Fluctuaciones emocionales presentes pero manejables. El estado afectivo muestra inconsistencia que puede relacionarse con factores situacionales del contexto venezolano.\n\n**Bases Neurocientíficas:** La variabilidad en la activación del sistema nervioso autónomo sugiere regulación emocional en proceso de adaptación. La ínsula anterior, clave para la conciencia interoceptiva, puede estar procesando señales contradictorias.",
+                "recomendaciones": [
+                    "🧘 **Mindfulness Básico:** 5 minutos de atención plena al despertar",
+                    "🎵 **Regulación por Música:** Usa música instrumental para estabilizar el estado de ánimo",
+                    "🤝 **Red de Apoyo:** Conversa con alguien de confianza sobre cómo te sientes",
+                    "⏰ **Rutina Estructurada:** La predictibilidad reduce la variabilidad emocional"
+                ]
+            },
+            "bajo": {
+                "titulo": "🎭 Variabilidad Emocional Leve",
+                "analisis": f"**Análisis Psicológico:** Ligeras fluctuaciones emocionales dentro de rangos normales. La variabilidad afectiva leve es adaptativa y no representa riesgo clínico.\n\n**Bases Neurocientíficas:** El sistema límbico muestra respuestas apropiadas al contexto. La regulación prefrontal está activa y funcional.",
+                "recomendaciones": [
+                    "✅ **Autobservación:** Mantén conciencia de tus estados emocionales",
+                    "🌿 **Ejercicio Suave:** Caminata o yoga para anclar el estado de ánimo",
+                    "📚 **Psicoeducación:** Aprende sobre inteligencia emocional",
+                    "🎯 **Metas Pequeñas:** Logros diarios concretos estabilizan el ánimo"
+                ]
+            }
+        },
+
+        "Riesgo neuro-afectivo": {
+            "alto": {
+                "titulo": "🧠 Riesgo Neuro-Afectivo Elevado",
+                "analisis": f"**Análisis Psicológico:** Combinación de indicadores depresivos y lingüísticos negativos que sugiere malestar psicológico significativo. Puntaje de riesgo: {promedio:.2f}/1.0. Requiere atención prioritaria.\n\n**Bases Neurocientíficas:** Los marcadores detectados son consistentes con activación sostenida del eje HPA (hipotálamo-hipófisis-adrenal), reducción en la actividad del núcleo accumbens (sistema de recompensa) y posible disminución de serotonina y dopamina. El hipocampo puede verse afectado por cortisol elevado crónico.",
+                "recomendaciones": [
+                    "🆘 **Intervención Inmediata:** Contacta al departamento de orientación de tu institución",
+                    "👨‍👩‍👧 **Red de Apoyo Familiar:** Comparte cómo te sientes con un adulto de confianza",
+                    "🌅 **Activación Conductual:** Realiza una actividad placentera hoy, aunque sea pequeña",
+                    "📵 **Higiene Digital:** Desconéctate de redes sociales por 48 horas"
+                ]
+            },
+            "medio": {
+                "titulo": "🧠 Indicadores Neuro-Afectivos Moderados",
+                "analisis": f"**Análisis Psicológico:** Señales de malestar emocional moderado con componentes cognitivos negativos. El estado actual es manejable con intervención preventiva adecuada.\n\n**Bases Neurocientíficas:** Posible reducción transitoria en la disponibilidad de neurotransmisores reguladores del ánimo. La neuroplasticidad permite recuperación con intervenciones conductuales apropiadas.",
+                "recomendaciones": [
+                    "🌞 **Exposición Solar:** 20 minutos de luz natural al día activan la serotonina",
+                    "🏃 **Ejercicio Aeróbico:** Incrementa BDNF (factor neurotrófico) y mejora el ánimo",
+                    "🤝 **Conexión Social:** Evita el aislamiento — busca interacción presencial",
+                    "📓 **Registro de Gratitud:** Escribe 3 cosas positivas cada noche"
+                ]
+            },
+            "bajo": {
+                "titulo": "🧠 Indicadores Neuro-Afectivos Leves",
+                "analisis": f"**Análisis Psicológico:** Señales leves de malestar dentro de rangos normales adaptativos. No representa riesgo clínico pero merece atención preventiva.\n\n**Bases Neurocientíficas:** El sistema neuroafectivo muestra funcionamiento dentro de parámetros normales con ligeras fluctuaciones esperables.",
+                "recomendaciones": [
+                    "🌿 **Autocuidado Básico:** Sueño, alimentación e hidratación adecuados",
+                    "🎨 **Actividades Creativas:** El arte y la música regulan el sistema límbico",
+                    "🧠 **Aprendizaje Activo:** Nuevos estímulos cognitivos generan dopamina",
+                    "🤝 **Conexión Significativa:** Cultiva relaciones de calidad sobre cantidad"
+                ]
+            }
+        },
+
+        "Perfil mixto": {
+            "alto": {
+                "titulo": "🌈 Perfil Complejo de Alto Riesgo",
+                "analisis": f"**Análisis Psicológico:** Múltiples factores de riesgo activos sin un patrón dominante claro. La complejidad del perfil sugiere que varios sistemas psicológicos están bajo presión simultáneamente. Puntaje: {promedio:.2f}/1.0.\n\n**Bases Neurocientíficas:** La activación simultánea de múltiples circuitos de estrés (amígdala, eje HPA, sistema simpático) sin un detonante único sugiere sobrecarga sistémica. La corteza prefrontal puede estar comprometida en su función regulatoria.",
+                "recomendaciones": [
+                    "🆘 **Evaluación Profesional:** La complejidad del perfil requiere orientación especializada",
+                    "📋 **Identificación de Estresores:** Lista los 3 principales factores que te generan malestar",
+                    "🌬️ **Regulación Inmediata:** Técnica 5-4-3-2-1 de grounding para el momento presente",
+                    "💤 **Prioriza el Sueño:** El descanso es el primer paso para restablecer el equilibrio"
+                ]
+            },
+            "medio": {
+                "titulo": "🌈 Perfil Mixto Moderado",
+                "analisis": f"**Análisis Psicológico:** Señales mixtas que no configuran un patrón único. Puede indicar un estado de transición emocional o múltiples estresores menores actuando en conjunto.\n\n**Bases Neurocientíficas:** El sistema nervioso está procesando múltiples demandas simultáneas. La respuesta adaptativa está activa pero no desbordada.",
+                "recomendaciones": [
+                    "🎯 **Foco en lo Controlable:** Identifica qué puedes cambiar hoy",
+                    "🧘 **Pausa Activa:** 10 minutos de descanso consciente entre actividades",
+                    "🤝 **Apoyo Social:** Comparte tu estado con alguien de confianza",
+                    "📆 **Organización:** Una agenda clara reduce la sensación de caos"
+                ]
+            },
+            "bajo": {
+                "titulo": "🌈 Perfil Mixto Estable",
+                "analisis": f"**Análisis Psicológico:** Señales variadas pero dentro de rangos saludables. El perfil mixto en riesgo bajo indica buena capacidad de procesamiento emocional ante múltiples estímulos.\n\n**Bases Neurocientíficas:** El sistema nervioso autónomo muestra buena variabilidad y adaptabilidad. La regulación prefrontal está operativa.",
+                "recomendaciones": [
+                    "✅ **Mantén tu Equilibrio:** Continúa con tus estrategias actuales",
+                    "🌟 **Fortalezas:** Identifica y refuerza lo que te funciona bien",
+                    "📈 **Crecimiento:** Explora nuevas herramientas de bienestar",
+                    "🌐 **Comunidad:** Comparte experiencias positivas con otros"
+                ]
+            }
         }
+
     }
     
     # ================================================================
@@ -1074,7 +1222,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
                 <div style='background:rgba(255,68,68,0.08);border-left:4px solid #ff4444;
                 padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
                 <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <p>{md_to_html(rec_data['analisis'])}</p>
                 <hr>
                 <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
                 <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
@@ -1087,7 +1235,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
                 <div style='background:rgba(255,170,68,0.08);border-left:4px solid #ffaa44;
                 padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
                 <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <p>{md_to_html(rec_data['analisis'])}</p>
                 <hr>
                 <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
                 <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
@@ -1100,7 +1248,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
                 <div style='background:rgba(68,204,68,0.08);border-left:4px solid #44cc44;
                 padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
                 <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{rec_data['analisis'].replace(chr(10), '<br>')}</p>
+                <p>{md_to_html(rec_data['analisis'])}</p>
                 <hr>
                 <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
                 <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
@@ -1125,8 +1273,8 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         st.metric(
             label="Puntaje General", 
             value=f"{promedio:.2f}",
-            delta="ALTO" if promedio >= 4.0 else "MODERADO" if promedio >= 2.5 else "BAJO",
-            delta_color="inverse" if promedio >= 4.0 else "normal"
+            delta="ALTO" if promedio >= 0.65 else "MODERADO" if promedio >= 0.35 else "BAJO",
+            delta_color="inverse" if promedio >= 0.65 else "normal"
         )
     
     with col2:
@@ -1212,7 +1360,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     pensamientos de autolesión, o síntomas que interfieran con tu funcionamiento diario, 
     <strong>busca atención profesional inmediata</strong>.<br><br>
     
-    <em>Plataforma de Detección Temprana - Versión 2.0 © 2025</em>
+    <em>Plataforma de Detección Temprana - Versión 3.0 © 2026</em>
     </div>
     """, unsafe_allow_html=True)
 # ================================================================
@@ -2652,7 +2800,7 @@ if rol_seleccionado == "Estudiante":
         
         ---
         
-        **Para preguntas o soporte:** chirinos.3110444@unir.edu.ve
+        **Para preguntas o soporte:** eliezer.05le4l@gmail.com
         """)
 
 # Área de Docente
@@ -2782,4 +2930,4 @@ else:
 # PIE DE PÁGINA
 # ================================================================
 st.markdown("---")
-st.caption("Todos los derechos reservados • Versión 2.0 • © 2025")
+st.caption("Todos los derechos reservados • Versión 3.0 • © 2026")
