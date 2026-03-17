@@ -1452,12 +1452,13 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     st.markdown("---")
     st.markdown("""
     <div style='
-        background-color: #fff3cd;
-        border: 1px solid #ffeaa7;
+        background-color: #2d2d00;
+        border: 1px solid #ffaa00;
         border-radius: 8px;
         padding: 15px;
         margin: 20px 0;
         font-size: 0.9em;
+        color: #ffd966;
     '>
     <strong>⚠️ DECLARACIÓN DE RESPONSABILIDAD PROFESIONAL</strong><br><br>
     
@@ -2971,7 +2972,12 @@ if rol_seleccionado == "Estudiante":
         if alerts:
             st.subheader("🚨 Alertas de Seguimiento")
             for alert in alerts:
-                st.info(alert)
+                if "🔴" in alert:
+                    st.error(alert)
+                elif "🟡" in alert:
+                    st.warning(alert)
+                else:
+                    st.success(alert)
             
         # 3. Opciones Post-Envío (REUBICADAS AQUÍ)
         st.markdown("---")
