@@ -17,6 +17,8 @@ import time
 import streamlit.components.v1 as components
 import math
 import hashlib  # NEW: For password security
+from dotenv import load_dotenv
+load_dotenv()
 
 from database import save_user, save_survey, save_result
 
@@ -79,9 +81,6 @@ except ImportError:
 def generar_hash(password: str):
     """Convierte texto plano en un código seguro (SHA-256)."""
     return hashlib.sha256(password.encode()).hexdigest()
-
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def img_to_base64(image_path):
     try:
@@ -2456,7 +2455,7 @@ with st.sidebar:
         if not st.session_state.get('docente_activo'):
             clave = st.text_input("🔑 Clave de acceso docente:", type="password")
             if st.button("🔓 Acceder como docente", use_container_width=True):
-                if clave == "admin123":  # Clave por defecto, puedes cambiarla
+                if clave == os.getenv("CLAVE_DOCENTE", "admin123"):  # Clave por defecto, puedes cambiarla
                     st.session_state.docente_activo = True
                     st.session_state.clave_docente = clave
                     st.success("Acceso concedido")
