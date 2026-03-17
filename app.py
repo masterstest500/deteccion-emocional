@@ -34,7 +34,7 @@ st.set_page_config(
 
 # 2. Rutas dinámicas: Esto permite que el proyecto funcione en cualquier PC
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+ASSETS_DIR = os.path.join(BASE_DIR, "images")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # Crear carpetas si no existen
@@ -47,7 +47,7 @@ from init_db import get_db_path, init_db
 
 DB_PATH = get_db_path()
 # LOGO_PATH ahora es relativo, asegúrate de poner tu Logo.png en la carpeta 'assets'
-LOGO_PATH = os.path.join(ASSETS_DIR, "Logo.png") 
+LOGO_PATH = os.path.join(BASE_DIR, "images", "Logo.png") 
 
 LOADER_SECONDS = 5
 AUDIO_FILE_PATH = "static/clic.wav"
@@ -163,50 +163,41 @@ st.markdown("""
     header {visibility: hidden;}
     .stApp {background: transparent;}
             
-    /* --------------------------------------------------------------------- */
-    /* SOLUCIÓN DEFINITIVA DE SIDEBAR: FORZAR APERTURA Y POSICIÓN */
-    /* --------------------------------------------------------------------- */
-    /* 1. Fuerza la apertura de la Sidebar */
+    /* SIDEBAR: FORZAR APERTURA Y COLOR OSCURO */
     [data-testid="stSidebar"] {
-        transform: none !important; /* Anula la animación de colapso */
-        visibility: visible !important; /* Asegura la visibilidad */
-        width: 210px !important; /* Fuerza un ancho estándar */
-        margin-left: 0px !important; /* Asegura que no esté fuera de la pantalla */
+        transform: none !important;
+        visibility: visible !important;
+        width: 210px !important;
+        margin-left: 0px !important;
+        background: #383838 !important;
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        background: #383838 !important;
     }
             
-    /* 2. Fuerza el contenido principal a dejar el espacio a la sidebar */
+    /* Contenido principal */
     .main {
-        padding-left: 210px !important; /* Asegura que el contenido principal empiece después de la sidebar */
-        overflow-y: hidden !important; /* SOLUCIÓN AL SCROLL GENERAL */
+        padding-left: 210px !important;
+        overflow-y: hidden !important;
     }
     
-    /* Oculta el botón de colapsar (la "x") */
-    [data-testid="stSidebarCollapseButton"] {
-        display: none !important;
-    }
-            
-    /* FORZAR SIDEBAR VISIBLE - AÑADE ESTO */
+    /* Ocultar botones de colapsar */
+    [data-testid="stSidebarCollapseButton"],
     [data-testid="collapsedControl"] {
         display: none !important;
     }
-      
             
-    /* Prevenir el zoom en imágenes */
+    /* Imágenes */
     .stImage img {
         max-width: 100%;
         height: auto;
         pointer-events: none;
     }
             
-    
-    /* Ocultar mensajes de st.rerun() */
+    /* Ocultar alertas de rerun */
     .stAlert {
         display: none !important;
-    }
-    
-    /* Mejorar la sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8f9fa, #eef2ff);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -691,11 +682,10 @@ def show_landing_page(logo_base64):
     
     # 4. Renderizar el IFRAME
     components.html(
-        html_content, 
-        height=700, 
-        width="100%", 
-        scrolling=False 
-    )
+    html_content, 
+    height=700, 
+    scrolling=False 
+)
 
 # 5. Botón de Transición Invisible (Activado por JS)
 st.button(
