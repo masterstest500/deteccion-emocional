@@ -1,0 +1,269 @@
+/* ===============================================================
+   load.css — Versión mejorada y unificada
+   - Glow logo, ondas EEG animadas, glass UI, microanimaciones
+   - compatible con Streamlit (v1.30+)
+   =============================================================== */
+
+/* ---------------------------------------------------------------
+   VARIABLES GLOBALES (THEME)
+   --------------------------------------------------------------- */
+:root {
+    --bg-1: #212121;       
+    --bg-2: #2c2c2c;       
+    --accent-1: #4fc3f7;   
+    --accent-2: #81d4fa;   
+    --glass-bg: rgba(255,255,255,0.08);
+    --glass-border: rgba(255,255,255,0.20);
+    --card-bg: #ffffff;
+    --muted: #6b7280;
+    --transition-short: 180ms;
+    --transition-medium: 320ms;
+    --shadow-soft: 0 8px 28px rgba(2,6,23,0.12);
+}
+
+/* Respeto a usuarios con reducción de animación */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+/* ===============================================================
+   LOADER ANIMADO — BACKGROUND, LOGO, FRASE Y ONDAS EEG
+   =============================================================== */
+
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+}
+
+/* LOGO con glow + animación */
+.loading-logo {
+    width: 180px;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 18px rgba(79,195,247,0.45))
+            drop-shadow(0 0 30px rgba(129,212,250,0.25));
+    animation: logoPulse 2.6s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+    0%   { transform: scale(1);   filter: drop-shadow(0 0 15px rgba(79,195,247,0.30)); }
+    50%  { transform: scale(1.04); filter: drop-shadow(0 0 25px rgba(79,195,247,0.55)); }
+    100% { transform: scale(1);   filter: drop-shadow(0 0 15px rgba(79,195,247,0.30)); }
+}
+
+/* Frase aleatoria */
+.loading-text {
+    font-size: 1.1rem;
+    opacity: 0.9;
+    text-align: center;
+    max-width: 720px;
+    margin-top: 10px;
+}
+
+/* Barra de carga */
+.loading-bar {
+    width: 70%;
+    max-width: 720px;
+    height: 10px;
+    border-radius: 10px;
+    margin-top: 20px;
+    background: rgba(255,255,255,0.10);
+    overflow: hidden;
+}
+
+.loading-bar .progress {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ffffff, rgba(255,255,255,0.75));
+    transition: width 0.25s linear;
+}
+
+/* ONDAS EEG ANIMADAS */
+.eeg-wave {
+    position: absolute;
+    bottom: 8%;
+    width: 110%;
+    opacity: 0.22;
+    left: -5%;
+    pointer-events: none;
+}
+
+.eeg-wave path {
+    stroke: rgba(255,255,255,0.75);
+    stroke-width: 2.4;
+    fill: none;
+    stroke-dasharray: 360;
+    animation: eegShift 4.6s linear infinite;
+}
+
+@keyframes eegShift {
+    from { stroke-dashoffset: 0;   transform: translateX(0); }
+    to   { stroke-dashoffset: 360; transform: translateX(-10%); }
+}
+
+/* ===============================================================
+   GLASS UI — TARJETAS Y CONTENEDORES
+   =============================================================== */
+
+.glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    border-radius: 14px;
+    padding: 20px;
+    margin: 14px 0;
+    box-shadow: var(--shadow-soft);
+    transition: transform var(--transition-medium), box-shadow var(--transition-medium);
+}
+
+.glass-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 14px 40px rgba(2,6,23,0.18);
+}
+
+/* ===============================================================
+   BOTONES DINÁMICOS
+   =============================================================== */
+
+.btn-primary, .stButton > button {
+    background: linear-gradient(45deg, var(--accent-1), var(--accent-2));
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 10px 18px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 8px 28px rgba(79,195,247,0.22) !important;
+    transition: transform var(--transition-short), box-shadow var(--transition-short);
+}
+
+.btn-primary:hover,
+.stButton > button:hover {
+    transform: translateY(-3px) !important;
+    box-shadow: 0 16px 45px rgba(79,195,247,0.32) !important;
+}
+
+.stButton > button:active {
+    transform: scale(0.97) !important;
+}
+
+/* ===============================================================
+   TARJETAS DE MÉTRICAS — DASHBOARD
+   =============================================================== */
+
+.metric-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    border-left: 4px solid var(--accent-1);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+    transition: transform var(--transition-medium), box-shadow var(--transition-medium);
+}
+
+.metric-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.15);
+}
+
+/* ===============================================================
+   STREAMLIT COMPONENTS — MEJORADOS
+   =============================================================== */
+
+/* Sliders */
+div[role="slider"] > div {
+    background: linear-gradient(90deg, var(--accent-1), var(--accent-2)) !important;
+}
+
+/* Select-box */
+.stSelectbox > div:first-child:hover {
+    box-shadow: 0 0 0 2px rgba(79,195,247,0.25);
+    border-radius: 8px;
+}
+
+/* Alerts */
+.stAlert {
+    border-radius: 12px !important;
+    border-left: 4px solid var(--accent-1) !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] > div:first-child {
+    background: linear-gradient(180deg, var(--bg-1), var(--bg-2)) !important;
+}
+
+/* ===============================================================
+   ANIMACIONES / FADE-IN
+   =============================================================== */
+.smooth-fade-in {
+    animation: smoothFadeIn 0.75s ease-out both;
+}
+
+@keyframes smoothFadeIn {
+    from { opacity: 0; transform: translateY(15px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ===============================================================
+   MEJORAS PARA BOTONES DE SESIÓN (NUEVO)
+   =============================================================== */
+
+/* Botón de logout con estilo de advertencia */
+.stButton > button[kind="secondary"] {
+    background: linear-gradient(45deg, #ff6b6b, #ff8787) !important;
+    color: white !important;
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background: linear-gradient(45deg, #ff5252, #ff6b6b) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 12px 35px rgba(255, 107, 107, 0.35) !important;
+}
+
+/* Estados de sesión docente */
+.docente-activo {
+    border-left: 4px solid #4fc3f7 !important;
+    background: rgba(79, 195, 247, 0.1) !important;
+}
+
+/* Mensajes de confirmación */
+.logout-confirm {
+    border: 2px solid #ff6b6b !important;
+    background: rgba(255, 107, 107, 0.1) !important;
+    border-radius: 12px !important;
+}
+
+/* Botones de confirmación de logout */
+.stButton > button:contains("✅ Sí") {
+    background: linear-gradient(45deg, #4caf50, #66bb6a) !important;
+}
+
+.stButton > button:contains("❌ No") {
+    background: linear-gradient(45deg, #f44336, #ef5350) !important;
+}
+
+/* Indicador visual de sesión activa */
+.sesion-activa {
+    background: linear-gradient(45deg, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05)) !important;
+    border-left: 4px solid #4caf50 !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    margin: 5px 0 !important;
+}
+
+/* ===============================================================
+   RESPONSIVE
+   =============================================================== */
+
+@media (max-width: 768px) {
+    .loading-logo { width: 140px; }
+    .loading-bar { width: 85%; }
+    .glass-card, .metric-card { padding: 14px; }
+}

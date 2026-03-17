@@ -1,0 +1,273 @@
+📘 MANUAL DE USUARIO – Plataforma de Prevención Cognitiva y Emocional
+1. Introducción
+
+La Plataforma de Prevención Cognitiva y Emocional es una herramienta diseñada para:
+
+detectar tempranamente indicadores de riesgo emocional,
+
+monitorear bienestar estudiantil o laboral,
+
+ofrecer una visión integral del estado emocional mediante encuestas psicométricas,
+
+generar reportes, dashboards y alertas inteligentes para docentes o responsables.
+
+El sistema utiliza modelos psicológicos y neurocientíficos como:
+
+Valence–Arousal Model,
+
+POMS (Perfil de Estado de Ánimo),
+
+Indicadores de neurodiversidad,
+
+Análisis de texto avanzado (NLP),
+
+Tendencias longitudinales,
+
+Semáforo de alertas.
+
+2. Inicio y navegación
+
+La plataforma se ejecuta en Streamlit.
+
+Para iniciar:
+streamlit run app.py
+
+
+La aplicación carga una pantalla inicial (landing page) y posteriormente muestra el menú lateral.
+
+El menú contiene:
+
+Registrar usuario
+
+Registrar encuesta
+
+Dashboard profesional
+
+Alertas inteligentes 2.0
+
+Ver mis resultados
+
+Descargas y exportes
+
+3. Registrar usuario
+
+En el menú lateral, el usuario debe ingresar:
+
+Nombre o alias
+
+Edad
+
+Rol (estudiante/docente/empleado)
+
+Nivel educativo (primaria, secundaria, universidad)
+
+Aceptación del consentimiento informado
+
+Los datos son necesarios para aplicar correctamente las encuestas adaptadas por nivel.
+
+4. Registrar encuesta
+
+Esta sección permite realizar la Encuesta de Bienestar Avanzada.
+
+Incluye:
+
+✔ Sección 1 — Preguntas base (Likert 1–5)
+
+Estrés
+
+Motivación
+
+Sueño
+
+Uso de redes
+
+Ánimo
+
+Apoyo percibido
+
+Ocio
+
+Las preguntas cambian ligeramente según el nivel educativo.
+
+✔ Sección 2 — POMS breve
+
+Mide estados afectivos:
+
+tensión
+
+fatiga
+
+depresión
+
+vigor
+
+confusión
+
+✔ Sección 3 — Valence–Arousal
+
+Escalas del 1 al 9 para:
+
+Valence (positivo ↔ negativo)
+
+Arousal (calma ↔ activación)
+
+✔ Sección 4 — Indicadores adicionales
+
+Opcionales, neurodiversidad-friendly:
+
+Dificultad de atención
+
+Sensibilidad sensorial
+
+Olvidos frecuentes
+
+Patrones repetitivos
+
+✔ Sección 5 — Texto libre
+
+El usuario describe cómo se ha sentido.
+
+🔍 Se usa para análisis emocional con NLP.
+
+5. Resultados de la encuesta
+
+Al enviar, el sistema calcula:
+
+✔ Puntaje emocional combinado (0 a 6)
+
+Basado en:
+
+Likert base
+
+Sentimiento del texto
+
+POMS
+
+Valence-Arousal
+
+Palabras negativas
+
+✔ Clasificación de riesgo
+
+🟥 Alto
+
+🟨 Medio
+
+🟩 Bajo
+
+✔ Perfil emocional
+
+Ejemplos:
+
+“Ansioso–hiperactivado”
+
+“Desmotivado–baja energía”
+
+“Estable–positivo”
+
+“Fatiga emocional”
+
+6. Dashboard profesional
+
+Accesible para docentes o responsables autorizados.
+
+Incluye gráficos interactivos Plotly:
+
+Distribución de riesgo (pastel)
+
+Frecuencia de perfiles emocionales (barras)
+
+Mapa Valence–Arousal (scatter)
+
+Promedio POMS por nivel educativo (línea)
+
+Tabla resumen con puntajes y perfiles
+
+Permite análisis global rápido y visual.
+
+7. Alertas Inteligentes 2.0
+
+Módulo avanzado para detectar:
+
+Caídas de motivación
+
+Aumento de tensión (POMS)
+
+Valence negativo persistente
+
+Señales lingüísticas de agotamiento (NLP)
+
+Indicadores neurodiversidad repetitivos
+
+El sistema genera:
+
+✔ Semáforo profesional
+
+🚨 Crítico
+
+⚠️ Alto
+
+📋 Medio
+
+✅ Estable
+
+✔ Justificaciones claras
+
+Ejemplo:
+
+“Motivación: 4 → 3 → 2
+Tensión POMS elevada 0.72
+Texto: ‘me siento agotado hoy’”
+
+✔ Exportación CSV
+
+Para informes o seguimiento institucional.
+
+8. Mis resultados
+
+Cada usuario puede ver:
+
+Su historial de encuestas
+
+Su tendencia emocional
+
+Detalles psicológicos
+
+Su perfil actual
+
+9. Exportes
+
+Actualmente incluye:
+
+Exportación CSV de alertas
+
+PDF simple de resumen (si ReportLab está disponible)
+
+10. Recomendaciones de uso
+
+Aplicar la encuesta periódicamente (cada 2 semanas)
+
+Revisar alertas críticas inmediatamente
+
+Verificar tendencias, no solo resultados aislados
+
+Exportar datos para análisis institucional
+
+Combinar con orientación profesional si es necesario
+
+11. Soporte técnico
+
+Si la app no inicia:
+
+Verificar Python 3.10+
+
+Instalar dependencias:
+
+pip install -r requirements.txt
+
+
+Revisar permisos de archivos (Windows puede bloquear imágenes)
+
+Asegurar que app.py y load.css estén en la misma carpeta
+
+⭐ Manual completamente terminado.
