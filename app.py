@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import io
 import zipfile
 import typing as t
@@ -198,23 +198,132 @@ def safe_float(value, default=0.0):
 # ANÁLISIS EMOCIONAL (TextBlob + conteo simple)
 # ================================================================
 
+# ================================================================
+# NLP VENEZOLANO — Diccionario emocional + VADER adaptado
+# ================================================================
+
+# Diccionario emocional venezolano expandido
+EMOCIONES_VE = {
+    "tristeza": [
+        "triste", "tristeza", "llorar", "lloro", "llorando", "deprimido",
+        "depresión", "melancolía", "melancólico", "abatido", "desanimado",
+        "sin ganas", "desmotivado", "vacío", "soledad", "solo", "sola",
+        "abandono", "perdido", "perdida", "infeliz", "sufriendo", "sufro"
+    ],
+    "ansiedad": [
+        "ansioso", "ansiosa", "ansiedad", "nervioso", "nerviosa", "nervios",
+        "estresado", "estresada", "estrés", "angustia", "angustiado",
+        "preocupado", "preocupada", "preocupación", "miedo", "temor",
+        "asustado", "pánico", "agitado", "inquieto", "intranquilo",
+        "desesperado", "desesperación", "paranoia"
+    ],
+    "agotamiento": [
+        "cansado", "cansada", "cansancio", "agotado", "agotada", "agotamiento",
+        "sin energía", "fatigado", "fatiga", "exhausto", "rendido", "rendida",
+        "no puedo más", "no aguanto", "sobrecargado", "sobrecargada",
+        "quemado", "burnout", "dormido", "somnoliento"
+    ],
+    "frustracion": [
+        "frustrado", "frustrada", "frustración", "molesto", "molesta",
+        "irritado", "irritada", "rabia", "rabioso", "enojado", "enojada",
+        "bravo", "brava", "arrecho", "arrechera", "fastidiado", "harto",
+        "harta", "no soporto", "odio", "detesto", "indignado"
+    ],
+    "desesperanza": [
+        "sin esperanza", "desesperanzado", "no vale", "no sirve",
+        "para qué", "para que", "no tiene sentido", "inútil", "inutil",
+        "fracasado", "fracasada", "no puedo", "imposible", "nunca",
+        "siempre mal", "todo mal", "nada funciona", "rendirse"
+    ],
+    "alegria": [
+        "feliz", "felicidad", "alegre", "alegría", "contento", "contenta",
+        "bien", "excelente", "genial", "chévere", "chevere", "bacano",
+        "emocionado", "emocionada", "motivado", "motivada", "energético",
+        "positivo", "positiva", "tranquilo", "tranquila", "estable"
+    ],
+    "confusion": [
+        "confundido", "confundida", "confusión", "no entiendo", "perdido",
+        "perdida", "desorientado", "bloqueado", "bloqueada", "no sé",
+        "no se", "dudas", "inseguro", "insegura"
+    ]
+}
+
+# Palabras negativas para conteo rápido
 PALABRAS_NEGATIVAS = [
-    "triste","mal","cansado","solo","estresado","ansioso","deprimido",
-    "agotado","preocupado","paranoia","frustrado","irritable","angustia"
+    "triste", "mal", "cansado", "solo", "estresado", "ansioso", "deprimido",
+    "agotado", "preocupado", "paranoia", "frustrado", "irritable", "angustia",
+    "arrecho", "arrechera", "harto", "desesperado", "rendido", "quemado",
+    "vacío", "inútil", "fracasado", "odio", "rabia", "miedo", "pánico"
 ]
+
+# Inicializar VADER
+_vader = SentimentIntensityAnalyzer()
 
 def analyze_text_advanced(text: str) -> t.Tuple[float, float, int]:
     """
+    Análisis NLP adaptado al español venezolano.
     Devuelve: (polarity [-1..1], subjectivity [0..1], neg_count)
     """
     if not text or not text.strip():
         return 0.0, 0.0, 0
-    blob = TextBlob(text)
-    polarity = float(blob.sentiment.polarity)
-    subjectivity = float(blob.sentiment.subjectivity)
+
     text_lower = text.lower()
+
+    # 1. Conteo de palabras negativas (contexto venezolano)
     neg_count = sum(1 for w in PALABRAS_NEGATIVAS if w in text_lower)
+
+    # 2. Conteo por categoría emocional
+    scores_emociones = {}
+    for emocion, palabras in EMOCIONES_VE.items():
+        score = sum(1 for p in palabras if p in text_lower)
+        scores_emociones[emocion] = score
+
+    total_emocional = sum(scores_emociones.values())
+
+    # 3. VADER para polaridad base
+    vader_scores = _vader.polarity_scores(text)
+    vader_compound = vader_scores["compound"]  # -1 a 1
+
+    # 4. Ajuste por contexto venezolano
+    # Si hay palabras negativas venezolanas, penalizar la polaridad
+    if neg_count > 0:
+        ajuste_negativo = min(neg_count * 0.15, 0.6)
+        polarity = vader_compound - ajuste_negativo
+    else:
+        polarity = vader_compound
+
+    # Si hay palabras de alegría, reforzar positivo
+    if scores_emociones.get("alegria", 0) > 0:
+        polarity = min(polarity + scores_emociones["alegria"] * 0.1, 1.0)
+
+    polarity = max(-1.0, min(1.0, round(polarity, 3)))
+
+    # 5. Subjetividad basada en densidad emocional
+    if len(text.split()) > 0:
+        densidad = total_emocional / len(text.split())
+        subjectivity = min(densidad * 3, 1.0)
+    else:
+        subjectivity = 0.0
+
+    subjectivity = round(subjectivity, 3)
+
     return polarity, subjectivity, neg_count
+
+
+def get_emociones_texto(text: str) -> dict:
+    """
+    Devuelve el perfil emocional completo del texto.
+    Usado para el análisis avanzado en reportes.
+    """
+    if not text or not text.strip():
+        return {e: 0 for e in EMOCIONES_VE.keys()}
+
+    text_lower = text.lower()
+    resultado = {}
+    for emocion, palabras in EMOCIONES_VE.items():
+        resultado[emocion] = sum(1 for p in palabras if p in text_lower)
+
+    return resultado
 
 # ================================================================
 # POMS reducido (Profile of Mood States) — items seleccionados
@@ -2713,6 +2822,7 @@ if rol_seleccionado == "Estudiante":
                             st.session_state.last_report_data = {
                                 "riesgo": riesgo, "perfil": perfil, "detalle": detalle, "uid": uid
                             }
+                            st.session_state.uid = uid  
                             st.session_state.menu_estudiante = "Resultados"
                             st.success("✅ Encuesta enviada correctamente")
                             st.balloons()
@@ -2723,10 +2833,121 @@ if rol_seleccionado == "Estudiante":
         
     
     elif st.session_state.menu_estudiante == "Ver historial":
-        st.title("📊 Mi Historial")
-        st.info("Feature in development - you'll soon be able to see your survey history")
+        st.title("📊 Mi Historial de Evaluaciones")
+        st.markdown("Aquí puedes ver la evolución de tu bienestar emocional a lo largo del tiempo.")
+
+        uid = st.session_state.get("uid")
+
+        if not uid:
+            st.info("Realiza tu primera evaluación para ver tu historial aquí.")
+            if st.button("📝 Comenzar evaluación", key="btn_hist_nueva"):
+                st.session_state.menu_estudiante = "Registrar encuesta"
+                st.session_state.consentimiento = False
+                st.rerun()
+        else:
+            conn = get_conn()
+            df_hist = pd.read_sql_query(f"""
+                SELECT 
+                    r.fecha,
+                    r.puntaje,
+                    r.riesgo,
+                    r.detalle
+                FROM resultados r
+                JOIN encuestas e ON r.encuesta_id = e.id
+                WHERE e.usuario_id = {uid}
+                ORDER BY r.fecha DESC
+            """, conn)
+            conn.close()
+
+            if df_hist.empty:
+                st.info("Aún no tienes evaluaciones registradas.")
+                if st.button("📝 Hacer primera evaluación", key="btn_hist_empty"):
+                    st.session_state.menu_estudiante = "Registrar encuesta"
+                    st.session_state.consentimiento = False
+                    st.rerun()
+            else:
+                # Procesar datos
+                df_hist["detalle_json"] = df_hist["detalle"].apply(safe_json_load)
+                df_hist["Perfil"] = df_hist["detalle_json"].apply(
+                    lambda x: x.get("Perfil", "No definido"))
+                df_hist["Valence"] = df_hist["detalle_json"].apply(
+                    lambda x: x.get("VA", {}).get("valence", 0))
+                df_hist["Arousal"] = df_hist["detalle_json"].apply(
+                    lambda x: x.get("VA", {}).get("arousal", 0.5))
+                df_hist["fecha_dt"] = pd.to_datetime(df_hist["fecha"])
+
+                # ── Métricas resumen ──────────────────────────────
+                st.subheader("📈 Resumen")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total evaluaciones", len(df_hist))
+                with col2:
+                    ultimo_riesgo = df_hist["riesgo"].iloc[0]
+                    color_map = {"Alto": "🔴", "Medio": "🟠", "Bajo": "🟢"}
+                    st.metric("Último riesgo", 
+                    f"{color_map.get(ultimo_riesgo, '⚪')} {ultimo_riesgo}")
+                with col3:
+                    puntaje_prom = df_hist["puntaje"].mean()
+                    st.metric("Puntaje promedio", f"{puntaje_prom:.2f}")
+
+                st.markdown("---")
+
+                # ── Gráfico de evolución ──────────────────────────
+                st.subheader("📊 Evolución del Riesgo")
+                fig_hist = px.line(
+                    df_hist.sort_values("fecha_dt"),
+                    x="fecha_dt",
+                    y="puntaje",
+                    markers=True,
+                    title="Evolución de tu puntaje de bienestar",
+                    labels={"fecha_dt": "Fecha", "puntaje": "Puntaje (0-1)"},
+                    color_discrete_sequence=["#4fc3f7"]
+                )
+                fig_hist.add_hline(
+                    y=0.65, line_dash="dash", 
+                    line_color="red", 
+                    annotation_text="Límite Alto"
+                )
+                fig_hist.add_hline(
+                    y=0.40, line_dash="dash", 
+                    line_color="orange",
+                    annotation_text="Límite Medio"
+                )
+                fig_hist.update_layout(
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)"
+                )
+                st.plotly_chart(fig_hist, use_container_width=True)
+
+                st.markdown("---")
+
+                # ── Tabla de historial ────────────────────────────
+                st.subheader("📋 Detalle de Evaluaciones")
+                df_tabla = df_hist[["fecha", "puntaje", "riesgo", "Perfil"]].copy()
+                df_tabla.columns = ["Fecha", "Puntaje", "Riesgo", "Perfil"]
+                df_tabla["Puntaje"] = df_tabla["Puntaje"].round(3)
+
+                def color_riesgo(val):
+                    colores = {
+                        "Alto": "background-color: rgba(255,68,68,0.2)",
+                        "Medio": "background-color: rgba(255,170,68,0.2)",
+                        "Bajo": "background-color: rgba(68,204,68,0.2)"
+                    }
+                    return colores.get(val, "")
+
+                st.dataframe(
+                    df_tabla.style.applymap(color_riesgo, subset=["Riesgo"]),
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.markdown("---")
+                st.caption("💡 Cada evaluación es un punto de datos. La tendencia a lo largo "
+                      "del tiempo es más importante que cualquier resultado individual.")
     
     elif st.session_state.menu_estudiante == "Resultados":
+
+        
         # Bloque de resultados
         st.title("✨ Reporte de Evaluación")
         
@@ -2769,7 +2990,7 @@ if rol_seleccionado == "Estudiante":
                 if 'last_report_data' in st.session_state: del st.session_state.last_report_data
                 st.rerun()
         
-    elif st.session_state.menu_estudiante == "Información":
+elif st.session_state.menu_estudiante == "Información":
         st.title("ℹ️ Información sobre la plataforma")
         st.markdown("""
         ## Plataforma de Detección Temprana Emocional
