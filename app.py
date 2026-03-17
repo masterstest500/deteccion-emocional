@@ -427,6 +427,15 @@ def get_questions_by_level(nivel: str):
 
             {"id": "seguridad", "tipo": "likert", "texto": "¿Te sentiste seguro en clase o en recreo?"},
 
+            {"id": "nd_atencion", "tipo": "carita", "texto": "¿Te cuesta quedarte quieto y prestar atención en clase?",
+            "opciones": ["😀","🙂","😐","🙁","😢"]},
+
+            {"id": "nd_sensorial", "tipo": "carita", "texto": "¿Los ruidos fuertes o las luces brillantes te molestan mucho?",
+            "opciones": ["😀","🙂","😐","🙁","😢"]},
+
+            {"id": "nd_olvidos", "tipo": "carita", "texto": "¿Olvidas cosas que te dijeron hace poco?",
+            "opciones": ["😀","🙂","😐","🙁","😢"]},
+            
             {"id": "texto", "tipo": "texto", "texto": "¿Quieres contarme algo más? (opcional)"}
         ]
 
@@ -438,7 +447,13 @@ def get_questions_by_level(nivel: str):
             {"id": "sueno", "tipo": "likert", "texto": "¿Cómo ha sido tu sueño estos días?"},
             {"id": "autoeficacia", "tipo": "likert", "texto": "¿Te sientes capaz de manejar tus tareas?"},
             {"id": "conexion", "tipo": "likert", "texto": "¿Te sientes conectado con otras personas?"},
-            {"id": "texto", "tipo": "texto", "texto": "Describe cómo te has sentido (opcional)"}
+            {"id": "texto", "tipo": "texto", "texto": "Describe cómo te has sentido (opcional)"},
+            {"id": "nd_atencion", "tipo": "likert", "texto": "¿Con qué frecuencia pierdes el hilo de lo que estabas haciendo?"},
+            {"id": "nd_sensorial", "tipo": "likert", "texto": "¿Los ruidos, luces o ambientes muy cargados te incomodan más que a otros?"},
+            {"id": "nd_inicio", "tipo": "likert", "texto": "¿Te cuesta empezar tareas aunque quieras hacerlas?"},
+            {"id": "nd_olvidos", "tipo": "likert", "texto": "¿Olvidas con frecuencia cosas importantes (citas, tareas, objetos)?"},
+            {"id": "nd_social", "tipo": "likert", "texto": "¿Te resulta difícil mantener conversaciones o entender lo que otros sienten?"}
+
         ]
 
     else:  # UNIVERSIDAD
@@ -454,6 +469,12 @@ def get_questions_by_level(nivel: str):
         {"id": "poms_fatiga", "tipo": "likert", "texto": "Fatiga (POMS)"},
         {"id": "poms_vigor", "tipo": "likert", "texto": "Vigor (POMS, invertido)"},
         {"id": "valence_raw", "tipo": "likert_9", "texto": "¿Cómo describes tu estado emocional ahora mismo? (1=muy negativo, 9=muy positivo)"},
+        {"id": "nd_atencion", "tipo": "likert", "texto": "¿Con qué frecuencia pierdes la concentración en tareas que requieren esfuerzo sostenido?"},
+        {"id": "nd_sensorial", "tipo": "likert", "texto": "¿La sensibilidad a estímulos sensoriales (ruido, luz, texturas) interfiere con tu desempeño?"},
+        {"id": "nd_inicio", "tipo": "likert", "texto": "¿Experimentas dificultad para iniciar actividades a pesar de tener la intención de hacerlas?"},
+        {"id": "nd_olvidos", "tipo": "likert", "texto": "¿Presentas olvidos frecuentes que afectan tu organización y rendimiento académico?"},
+        {"id": "nd_rutinas", "tipo": "likert", "texto": "¿Dependes de rutinas muy específicas y te afecta significativamente cuando se alteran?"},
+        {"id": "nd_social", "tipo": "likert", "texto": "¿Encuentras desafiante interpretar señales sociales o mantener interacciones convencionales?"},
         {"id": "arousal_raw", "tipo": "likert_9", "texto": "¿Cuál es tu nivel de activación o energía ahora mismo? (1=muy tranquilo, 9=muy activado)"},
         {"id": "texto", "tipo": "texto", "texto": "Describe cómo te sientes (opcional)"}
     ]
@@ -483,6 +504,7 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
     # VA por defecto para Primaria y Secundaria
     valence_calc = round((polarity + 1) / 2 * 2 - 1, 3)
     arousal_calc = round(subjectivity, 3)
+    nd_score = 0.5
 
     # -------------------------
     # PRIMARIA
@@ -505,6 +527,10 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
         texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
 
         puntaje = promedio_norm + texto_penalty
+        nd_atencion  = mapa_caritas.get(respuestas.get("nd_atencion", "😐"), 3)
+        nd_sensorial = mapa_caritas.get(respuestas.get("nd_sensorial", "😐"), 3)
+        nd_olvidos   = mapa_caritas.get(respuestas.get("nd_olvidos", "😐"), 3)
+        nd_score = ((nd_atencion + nd_sensorial + nd_olvidos) / 3 - 1) / 4
 
     # -------------------------
     # SECUNDARIA
@@ -522,6 +548,14 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
         texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
 
         puntaje = promedio_norm + texto_penalty
+        nd_items = [
+            respuestas.get("nd_atencion", 3),
+            respuestas.get("nd_sensorial", 3),
+            respuestas.get("nd_inicio", 3),
+            respuestas.get("nd_olvidos", 3),
+            respuestas.get("nd_social", 3),
+        ]
+        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
 
     # -------------------------
     # UNIVERSIDAD
@@ -557,6 +591,15 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
         valence_raw = respuestas.get("valence_raw", 5)
         arousal_raw = respuestas.get("arousal_raw", 5)
         valence_calc, arousal_calc = normalize_va(valence_raw, arousal_raw)
+        nd_items = [
+            respuestas.get("nd_atencion", 3),
+            respuestas.get("nd_sensorial", 3),
+            respuestas.get("nd_inicio", 3),
+            respuestas.get("nd_olvidos", 3),
+            respuestas.get("nd_rutinas", 3),
+            respuestas.get("nd_social", 3),
+        ]
+        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
 
     # -------------------------
     # Clasificación final (escala 0-1)
@@ -568,7 +611,7 @@ def process_results_by_level(nivel, respuestas, analisis_texto):
     else:
         riesgo = "Bajo"
 
-    return puntaje, riesgo, valence_calc, arousal_calc
+    return puntaje, riesgo, valence_calc, arousal_calc, nd_score
 
 # ================================================================
 # LANDING PAGE
@@ -1424,9 +1467,49 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             value=f"{subjectivity:.2f}",
             delta="ALTA" if subjectivity > 0.7 else "BAJA" if subjectivity < 0.3 else "MEDIA"
         )
+
+
+    # ================================================================
+    # 8b. INDICADORES DE NEURODIVERSIDAD
+    # ================================================================
+    neurodiv = datos.get("Neurodiv", {})
+    nd_score_rep = neurodiv.get("nd_score", 0.5)
+    atencion_rep = neurodiv.get("atencion", 0.5)
+    sensibilidad_rep = neurodiv.get("sensibilidad", 0.5)
+
+    if neurodiv:
+        st.markdown("---")
+        st.subheader("🧩 Indicadores de Procesamiento Cognitivo")
+        st.caption("Estos indicadores son orientativos y NO constituyen diagnóstico de neurodiversidad.")
+
+        col_n1, col_n2, col_n3 = st.columns(3)
+        with col_n1:
+            st.metric(
+                label="Índice Global ND",
+                value=f"{nd_score_rep:.2f}",
+                delta="ELEVADO" if nd_score_rep >= 0.6 else "MODERADO" if nd_score_rep >= 0.4 else "BAJO",
+                delta_color="inverse" if nd_score_rep >= 0.6 else "off"
+            )
+        with col_n2:
+            st.metric(
+                label="Atención",
+                value=f"{atencion_rep:.2f}",
+                delta="DIFICULTAD" if atencion_rep >= 0.6 else "MODERADA" if atencion_rep >= 0.4 else "ADECUADA",
+                delta_color="inverse" if atencion_rep >= 0.6 else "off"
+            )
+        with col_n3:
+            st.metric(
+                label="Sensibilidad Sensorial",
+                value=f"{sensibilidad_rep:.2f}",
+                delta="ELEVADA" if sensibilidad_rep >= 0.6 else "MODERADA" if sensibilidad_rep >= 0.4 else "BAJA",
+                delta_color="inverse" if sensibilidad_rep >= 0.6 else "off"
+            )
+
+        if nd_score_rep >= 0.6:
+            st.warning("⚠️ Los indicadores sugieren posibles dificultades de procesamiento cognitivo. Se recomienda consulta con especialista para evaluación formal.")
     
     # ================================================================
-    # 8. TEXTO ANALIZADO (SI EXISTE)
+    # 9. TEXTO ANALIZADO (SI EXISTE)
     # ================================================================
     if texto_snippet and texto_snippet.strip() and texto_snippet != "N/A":
         st.markdown("---")
@@ -1447,7 +1530,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             st.caption("*Este texto fue analizado utilizando Procesamiento de Lenguaje Natural (NLP) para extraer indicadores emocionales y cognitivos.*")
     
     # ================================================================
-    # 9. DISCLAIMER PROFESIONAL
+    # 10. DISCLAIMER PROFESIONAL
     # ================================================================
     st.markdown("---")
     st.markdown("""
@@ -2768,7 +2851,7 @@ if rol_seleccionado == "Estudiante":
                         polarity, subjectivity, neg_count = analyze_text_advanced(texto)
                         
                         # Procesar resultados según nivel
-                        puntaje, riesgo, valence_calc, arousal_calc = process_results_by_level(nivel, respuestas, (polarity, subjectivity, neg_count))
+                        puntaje, riesgo, valence_calc, arousal_calc, nd_score = process_results_by_level(nivel, respuestas, (polarity, subjectivity, neg_count))
                         
                         # Calcular POMS si es nivel Universidad
                         poms_scores = {}
@@ -2803,7 +2886,12 @@ if rol_seleccionado == "Estudiante":
                             "Promedio": puntaje,
                             "Riesgo": riesgo,
                             "POMS": poms_scores,
-                            "VA": {"valence": valence_calc, "arousal": arousal_calc}
+                            "VA": {"valence": valence_calc, "arousal": arousal_calc},
+                            "Neurodiv": {
+                                "atencion": round(respuestas.get("nd_atencion", 3) / 5 if isinstance(respuestas.get("nd_atencion", 3), int) else 0.5, 3),
+                                "sensibilidad": round(respuestas.get("nd_sensorial", 3) / 5 if isinstance(respuestas.get("nd_sensorial", 3), int) else 0.5, 3),
+                                "nd_score": round(nd_score, 3)
+                            }
                         }
                         
                         # Guardar en base de datos
