@@ -3083,8 +3083,8 @@ if rol_seleccionado == "Estudiante":
                 st.session_state.menu_estudiante = "Registrar encuesta"
                 if 'last_report_data' in st.session_state: del st.session_state.last_report_data
                 st.rerun()
-        
-elif st.session_state.menu_estudiante == "Información":
+
+    elif st.session_state.menu_estudiante == "Información":
         st.title("ℹ️ Información sobre la plataforma")
         st.markdown("""
         ## Plataforma de Detección Temprana Emocional
