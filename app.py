@@ -2145,12 +2145,22 @@ def show_dashboard_profesional():
         
         fig_riesgo = px.pie(
             riesgo_counts, values='count', names='riesgo',
-            title='Distribución de Nivel de Riesgo',
+            title='¿Cuántos estudiantes están en cada nivel de riesgo?',
             color='riesgo',
             color_discrete_map=color_map
         )
         fig_riesgo.update_traces(textinfo='percent+label', marker=dict(line=dict(color='#000000', width=1)))
         st.plotly_chart(fig_riesgo, use_container_width=True)
+        st.caption("🔴 Alto: requiere atención inmediata | 🟡 Medio: seguimiento recomendado | 🟢 Bajo: situación estable")
+        with st.expander("¿Cómo leer este gráfico?"):
+            st.markdown("""
+            Este gráfico muestra la proporción de estudiantes según su nivel de riesgo emocional detectado.
+            - **Riesgo Alto**: el sistema detectó señales significativas de malestar emocional que requieren atención prioritaria.
+            - **Riesgo Medio**: hay indicadores moderados que merecen seguimiento.
+            - **Riesgo Bajo**: el estudiante muestra un estado emocional estable.
+            
+            *Un porcentaje alto en rojo no es un diagnóstico — es una señal para iniciar conversaciones de apoyo.*
+            """)
 
     # Gráfico de Perfiles Emocionales (Barra)
     with col2:
@@ -2158,12 +2168,25 @@ def show_dashboard_profesional():
         perfil_counts.columns = ['perfil', 'count']
         fig_perfiles = px.bar(
             perfil_counts, x="perfil", y="count",
-            title="Frecuencia de Perfiles Emocionales",
+            title="¿Qué patrones emocionales predominan en el grupo?",
             text_auto=True,
             color='perfil',
             color_discrete_sequence=px.colors.qualitative.D3
         )
         st.plotly_chart(fig_perfiles, use_container_width=True)
+        st.caption("Cada barra representa cuántos estudiantes comparten un patrón emocional similar.")
+        with st.expander("¿Cómo leer este gráfico?"):
+            st.markdown("""
+            Los perfiles emocionales describen el patrón predominante detectado en cada estudiante:
+            - **Resiliente**: buena capacidad de adaptación ante el estrés.
+            - **Ansioso/Tenso**: niveles elevados de tensión y activación del sistema de alerta.
+            - **Fatigado**: agotamiento mental o físico significativo.
+            - **Inestable emocional**: fluctuaciones emocionales sin patrón claro.
+            - **Riesgo neuro-afectivo**: indicadores de malestar psicológico más profundo.
+            - **Perfil mixto**: múltiples factores activos sin patrón dominante.
+            
+            *El perfil más frecuente orienta qué tipo de intervención grupal podría ser más útil.*
+            """)
 
     # ================================================================
     # 2. Análisis POMS y Dimensión Emocional VA
@@ -2178,7 +2201,7 @@ def show_dashboard_profesional():
             df, x="valence", y="arousal",
             color="riesgo",
             hover_data=["perfil", "usuario_id"],
-            title="Distribución Emocional (Valence - Arousal)",
+            title="Mapa emocional del grupo: ¿cómo se sienten y qué tanta energía tienen?",
             color_discrete_map=color_map,
             range_x=[-1.1, 1.1],
             range_y=[-0.1, 1.1]
@@ -2186,7 +2209,22 @@ def show_dashboard_profesional():
         fig_va.add_shape(type="line", x0=-1, y0=0.5, x1=1, y1=0.5, line=dict(dash="dash", color="gray"))
         fig_va.add_shape(type="line", x0=0, y0=0, x1=0, y1=1, line=dict(dash="dash", color="gray"))
         st.plotly_chart(fig_va, use_container_width=True)
-        st.markdown("_Eje X: Placer (-1 a +1), Eje Y: Activación (0 a 1)_")
+        st.caption("Cada punto es un estudiante. Cuadrante superior derecho = activo y positivo. Inferior izquierdo = desanimado y sin energía.")
+        with st.expander("¿Cómo leer este gráfico?"):
+            st.markdown("""
+            Este mapa ubica a cada estudiante según dos dimensiones emocionales:
+            
+            - **Eje horizontal (Placer)**: va de -1 (muy negativo) a +1 (muy positivo). Indica qué tan agradable es el estado emocional.
+            - **Eje vertical (Activación)**: va de 0 (muy tranquilo) a 1 (muy activado). Indica el nivel de energía o alerta.
+            
+            **Los 4 cuadrantes significan:**
+            - Superior derecho ↗: Activo y positivo — motivado, enérgico.
+            - Superior izquierdo ↖: Activo y negativo — ansioso, estresado.
+            - Inferior derecho ↘: Tranquilo y positivo — relajado, sereno.
+            - Inferior izquierdo ↙: Tranquilo y negativo — apático, desmotivado.
+            
+            *Los puntos rojos en el cuadrante superior izquierdo merecen atención prioritaria.*
+            """)
 
     # Gráfico de Radar POMS Promedio por Nivel
     with col4:
@@ -2197,11 +2235,21 @@ def show_dashboard_profesional():
         fig_radar = px.line_polar(
             poms_group, r='Valor', theta='Métrica', color='nivel', 
             line_close=True,
-            title="Perfil POMS Promedio por Nivel",
+            title="Estados afectivos promedio por nivel educativo",
             range_r=[0, poms_group['Valor'].max() * 1.1] # Rango dinámico
         )
         st.plotly_chart(fig_radar, use_container_width=True)
-        st.markdown("_Tensión, Fatiga (Negativo) y Vigor (Positivo)_")
+        st.caption("Tensión y Fatiga altas son señales de alerta. Vigor alto indica buena energía grupal.")
+        with st.expander("¿Cómo leer este gráfico?"):
+            st.markdown("""
+            Este gráfico radar muestra el promedio de tres estados afectivos medidos con la escala POMS:
+            
+            - **Tensión**: nivel de estrés y nerviosismo del grupo. Valores altos indican sobrecarga.
+            - **Fatiga**: nivel de agotamiento mental y físico. Valores altos sugieren burnout grupal.
+            - **Vigor**: nivel de energía y vitalidad. Es el único indicador positivo — valores altos son buenos.
+            
+            *Un triángulo grande en Tensión y Fatiga con un vértice pequeño en Vigor es señal de alerta grupal.*
+            """)
 
     # ================================================================
     # 3. Indicadores Adicionales (Neurodiversidad)
@@ -2215,10 +2263,22 @@ def show_dashboard_profesional():
         fig_neuro = px.bar(
             neuro_group, x="nivel", y=neuro_metrics,
             barmode="group",
-            title="Indicadores de Procesamiento Cognitivo por Nivel",
+            title="¿Qué tan frecuentes son las dificultades de atención y sensibilidad por nivel?",
             labels={"value": "Promedio (0 a 1)", "variable": "Indicador"}
         )
         st.plotly_chart(fig_neuro, use_container_width=True)
+        st.caption("⚠️ Estos indicadores son orientativos. Valores altos sugieren posibles dificultades de procesamiento, no diagnósticos.")
+        with st.expander("¿Cómo leer este gráfico?"):
+            st.markdown("""
+            Muestra el promedio de dos indicadores relacionados con procesamiento cognitivo:
+            
+            - **Atención**: frecuencia de dificultades para mantener concentración sostenida.
+            - **Sensibilidad**: nivel de sensibilidad a estímulos sensoriales como ruidos o luces.
+            
+            Escala de 0 a 1 — valores por encima de 0.6 merecen atención del orientador.
+            
+            *Estos indicadores NO constituyen diagnóstico de neurodiversidad. Son señales preventivas.*
+            """)
     else:
         st.info("Los indicadores de procesamiento cognitivo (atención/sensibilidad) no están disponibles en todos los datos.")
 
