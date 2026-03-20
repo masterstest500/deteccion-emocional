@@ -143,7 +143,8 @@ st.markdown("""
     }
             
     /* Ocultar alertas de rerun */
-    .stAlert {
+   /* Ocultar solo alertas automáticas de rerun */ 
+    .stAlert[data-baseweb="notification"] {
         display: none !important;
     }
     </style>
@@ -2764,10 +2765,6 @@ if not st.session_state.loader_shown:
 with st.sidebar:
     st.title("🧭 Navegación")
     
-    # Mostrar modo de prueba si está activo
-    if st.session_state.get('landing_done') and st.session_state.get('loader_shown'):
-        st.info("🔧 Modo prueba: Landing deshabilitada")
-    
     # Selección de Rol
     rol_seleccionado = st.radio(
         "Selecciona tu rol:",
@@ -3189,7 +3186,7 @@ else:
             st.title("👨‍🏫 Panel Docente")
             st.markdown("Bienvenido al panel de administración docente.")
             
-            # Estadísticas rápidas
+            # ── Métricas generales ────────────────────────────
             conn = get_conn()
             try:
                 total_usuarios = pd.read_sql_query("SELECT COUNT(*) as count FROM usuarios", conn).iloc[0]['count']
@@ -3208,7 +3205,69 @@ else:
                 st.error(f"Error al obtener estadísticas: {e}")
             finally:
                 conn.close()
-            
+
+            # ── Semáforo de situación actual ──────────────────
+            st.markdown("---")
+            st.subheader("🚦 Situación General del Grupo")
+
+            conn2 = get_conn()
+            try:
+                df_semaforo = pd.read_sql_query("""
+                    SELECT r.riesgo, COUNT(*) as cantidad
+                    FROM resultados r
+                    JOIN encuestas e ON r.encuesta_id = e.id
+                    GROUP BY r.riesgo
+                """, conn2)
+            except Exception:
+                df_semaforo = pd.DataFrame()
+            finally:
+                conn2.close()
+
+            total = int(df_semaforo["cantidad"].sum()) if not df_semaforo.empty else 0
+            alto  = int(df_semaforo[df_semaforo["riesgo"] == "Alto"]["cantidad"].sum()) if not df_semaforo.empty else 0
+            medio = int(df_semaforo[df_semaforo["riesgo"] == "Medio"]["cantidad"].sum()) if not df_semaforo.empty else 0
+            bajo  = int(df_semaforo[df_semaforo["riesgo"] == "Bajo"]["cantidad"].sum()) if not df_semaforo.empty else 0
+
+            porcentaje_alto  = (alto / total) if total > 0 else 0
+            porcentaje_medio = (medio / total) if total > 0 else 0
+
+            if total == 0:
+                st.markdown("""
+                <div style='padding:15px;border-radius:8px;background:#1a3a1a;border:1px solid #44cc44;color:#aaffaa;'>
+                ℹ️ <strong>Sin datos:</strong> No hay evaluaciones registradas aún.
+                </div>
+                """, unsafe_allow_html=True)
+            elif porcentaje_alto >= 0.30:
+                st.markdown(f"""
+                <div style='padding:15px;border-radius:8px;background:#3a0000;border:1px solid #ff4444;color:#ffaaaa;'>
+                🔴 <strong>ATENCIÓN URGENTE:</strong> {alto} estudiante(s) en riesgo alto ({porcentaje_alto*100:.0f}% del total). Se recomienda intervención inmediata.
+                </div>
+                """, unsafe_allow_html=True)
+            elif porcentaje_medio >= 0.40 or alto >= 1:
+                st.markdown(f"""
+                <div style='padding:15px;border-radius:8px;background:#2d2d00;border:1px solid #ffaa00;color:#ffd966;'>
+                🟡 <strong>SEGUIMIENTO RECOMENDADO:</strong> {alto} en riesgo alto y {medio} en riesgo medio. Revisar casos prioritarios.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='padding:15px;border-radius:8px;background:#1a3a1a;border:1px solid #44cc44;color:#aaffaa;'>
+                🟢 <strong>SITUACIÓN ESTABLE:</strong> La mayoría del grupo ({bajo} estudiantes) presenta riesgo bajo.
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_s1, col_s2, col_s3 = st.columns(3)
+
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("🔴 Riesgo Alto", alto)
+            with col_s2:
+                st.metric("🟡 Riesgo Medio", medio)
+            with col_s3:
+                st.metric("🟢 Riesgo Bajo", bajo)
+
+            # ── Opciones disponibles ──────────────────────────
             st.markdown("---")
             st.subheader("Opciones disponibles")
             
