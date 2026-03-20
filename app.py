@@ -92,6 +92,10 @@ if "uid" not in st.session_state:
     st.session_state.uid = None
 if "docente_activo" not in st.session_state:
     st.session_state.docente_activo = False
+if "psicologo_activo" not in st.session_state:
+    st.session_state.psicologo_activo = False
+if "menu_psicologo" not in st.session_state:
+    st.session_state.menu_psicologo = "Historial individual"
 if "menu_estudiante" not in st.session_state:
     st.session_state.menu_estudiante = "Registrar encuesta"
 if "menu_docente" not in st.session_state:
@@ -2783,7 +2787,7 @@ with st.sidebar:
     # Selección de Rol
     rol_seleccionado = st.radio(
         "Selecciona tu rol:",
-        ["Estudiante", "Docente"],
+        ["Estudiante", "Docente", "Psicólogo"],
         key="rol_seleccionado"
     )
     
@@ -2793,23 +2797,21 @@ with st.sidebar:
         
         if st.button("📝 Registrar nueva encuesta", use_container_width=True):
             st.session_state.menu_estudiante = "Registrar encuesta"
-            st.session_state.consentimiento = False  # Resetear consentimiento
+            st.session_state.consentimiento = False
         
         if st.button("📊 Ver mi historial", use_container_width=True):
             st.session_state.menu_estudiante = "Ver historial"
         
         if st.button("ℹ️ Información sobre la plataforma", use_container_width=True):
             st.session_state.menu_estudiante = "Información"
-    
-    # Navegación para Docente
-    else:
+
+    elif rol_seleccionado == "Docente":
         st.subheader("👨‍🏫 Área de Docente")
         
-        # Autenticación docente
         if not st.session_state.get('docente_activo'):
             clave = st.text_input("🔑 Clave de acceso docente:", type="password")
             if st.button("🔓 Acceder como docente", use_container_width=True):
-                if clave == os.getenv("CLAVE_DOCENTE", "admin123"):  # Clave por defecto, puedes cambiarla
+                if clave == os.getenv("CLAVE_DOCENTE", "admin123"):
                     st.session_state.docente_activo = True
                     st.session_state.clave_docente = clave
                     st.success("Acceso concedido")
@@ -2817,29 +2819,45 @@ with st.sidebar:
                 else:
                     st.error("Clave incorrecta")
         
-        # Si el docente está autenticado, mostrar opciones
         if st.session_state.get('docente_activo'):
             if st.button("📈 Panel docente general", use_container_width=True):
                 st.session_state.menu_docente = "Panel docente"
-            
             if st.button("🧠 Clustering de riesgo", use_container_width=True):
                 st.session_state.menu_docente = "Clustering"
-            
             if st.button("📊 Dashboard histórico", use_container_width=True):
                 st.session_state.menu_docente = "Dashboard histórico"
-            
             if st.button("👨‍🏫 Dashboard profesional", use_container_width=True):
                 st.session_state.menu_docente = "Dashboard profesional"
-            
             if st.button("🚨 Alertas inteligentes", use_container_width=True):
                 st.session_state.menu_docente = "Alertas inteligentes"
-            
             if st.button("📁 Exportar datos", use_container_width=True):
                 st.session_state.menu_docente = "Exportar datos"
-            
-            # Botón de logout
             if st.button("🚪 Cerrar sesión docente", use_container_width=True):
                 logout()
+                st.rerun()
+
+    elif rol_seleccionado == "Psicólogo":
+        st.subheader("🧠 Área de Psicólogo")
+
+        if not st.session_state.get('psicologo_activo'):
+            clave_p = st.text_input("🔑 Clave de acceso:", type="password", key="input_clave_psico")
+            if st.button("🔓 Acceder como psicólogo", use_container_width=True):
+                if clave_p == os.getenv("CLAVE_PSICOLOGO", "psico123"):
+                    st.session_state.psicologo_activo = True
+                    st.rerun()
+                else:
+                    st.error("Clave incorrecta")
+
+        if st.session_state.get('psicologo_activo'):
+            if st.button("👤 Historial individual", use_container_width=True):
+                st.session_state.menu_psicologo = "Historial individual"
+            if st.button("🚨 Casos prioritarios", use_container_width=True):
+                st.session_state.menu_psicologo = "Casos prioritarios"
+            if st.button("📈 Dashboard histórico", use_container_width=True):
+                st.session_state.menu_psicologo = "Dashboard historico"
+            if st.button("🚪 Cerrar sesión", use_container_width=True):
+                st.session_state.psicologo_activo = False
+                st.session_state.menu_psicologo = "Historial individual"
                 st.rerun()
 
 # ================================================================
@@ -3191,7 +3209,8 @@ if rol_seleccionado == "Estudiante":
         """)
 
 # Área de Docente
-else:
+# Área de Docente
+elif rol_seleccionado == "Docente":
     if not st.session_state.get('docente_activo'):
         st.title("🔒 Acceso Docente")
         st.info("Por favor, ingresa la clave de acceso en la barra lateral para acceder al panel docente.")
@@ -3374,6 +3393,215 @@ else:
                     )
                 except Exception as e:
                     st.error(f"Error al generar Excel: {e}")
+
+# ================================================================
+# ÁREA DE PSICÓLOGO
+# ================================================================
+elif rol_seleccionado == "Psicólogo":
+    if not st.session_state.get('psicologo_activo'):
+        st.title("🔒 Acceso Psicólogo")
+        st.info("Por favor, ingresa la clave de acceso en la barra lateral.")
+
+    else:
+        if st.session_state.menu_psicologo == "Historial individual":
+            st.title("👤 Historial Individual de Estudiante")
+            st.markdown("Consulta el historial completo de cualquier estudiante por su ID.")
+
+            conn = get_conn()
+            try:
+                usuarios_disponibles = pd.read_sql_query(
+                    "SELECT DISTINCT id FROM usuarios ORDER BY id", conn)
+            finally:
+                conn.close()
+
+            if usuarios_disponibles.empty:
+                st.info("No hay estudiantes registrados aún.")
+            else:
+                ids = usuarios_disponibles["id"].tolist()
+                uid_sel = st.selectbox("Seleccionar ID de estudiante:", ids)
+
+                conn = get_conn()
+                try:
+                    df_ind = pd.read_sql_query(f"""
+                        SELECT 
+                            r.fecha,
+                            r.puntaje,
+                            r.riesgo,
+                            r.detalle,
+                            e.respuestas,
+                            u.edad,
+                            u.nivel
+                        FROM resultados r
+                        JOIN encuestas e ON r.encuesta_id = e.id
+                        JOIN usuarios u ON e.usuario_id = u.id
+                        WHERE u.id = {uid_sel}
+                        ORDER BY r.fecha DESC
+                    """, conn)
+                finally:
+                    conn.close()
+
+                if df_ind.empty:
+                    st.info("Este estudiante no tiene evaluaciones registradas.")
+                else:
+                    df_ind["detalle_json"]    = df_ind["detalle"].apply(safe_json_load)
+                    df_ind["respuestas_json"] = df_ind["respuestas"].apply(safe_json_load)
+                    df_ind["fecha_dt"]        = pd.to_datetime(df_ind["fecha"])
+                    df_ind["perfil"]          = df_ind["detalle_json"].apply(lambda x: x.get("Perfil", "N/A"))
+                    df_ind["texto_libre"]     = df_ind["respuestas_json"].apply(lambda x: x.get("texto", ""))
+                    df_ind["poms_tension"]    = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("tension", 0))
+                    df_ind["poms_fatigue"]    = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("fatigue", 0))
+                    df_ind["poms_vigor"]      = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("vigor", 0))
+                    df_ind["valence"]         = df_ind["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
+                    df_ind["arousal"]         = df_ind["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
+                    df_ind["nd_score"]        = df_ind["detalle_json"].apply(lambda x: x.get("Neurodiv", {}).get("nd_score", 0.5))
+
+                    # ── Resumen del estudiante ──────────────────
+                    st.subheader("📋 Resumen del Estudiante")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("ID", uid_sel)
+                    with col2:
+                        st.metric("Nivel", df_ind["nivel"].iloc[0])
+                    with col3:
+                        st.metric("Evaluaciones", len(df_ind))
+                    with col4:
+                        ultimo = df_ind["riesgo"].iloc[0]
+                        emoji = {"Alto": "🔴", "Medio": "🟠", "Bajo": "🟢"}.get(ultimo, "⚪")
+                        st.metric("Último riesgo", f"{emoji} {ultimo}")
+
+                    st.markdown("---")
+
+                    # ── Evolución del riesgo ────────────────────
+                    st.subheader("📈 Evolución del Riesgo")
+                    fig_ev = px.line(
+                        df_ind.sort_values("fecha_dt"),
+                        x="fecha_dt", y="puntaje",
+                        markers=True,
+                        labels={"fecha_dt": "Fecha", "puntaje": "Puntaje (0-1)"},
+                        color_discrete_sequence=["#4fc3f7"]
+                    )
+                    fig_ev.add_hline(y=0.65, line_dash="dash", line_color="red", annotation_text="Alto")
+                    fig_ev.add_hline(y=0.40, line_dash="dash", line_color="orange", annotation_text="Medio")
+                    fig_ev.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                    st.plotly_chart(fig_ev, use_container_width=True)
+
+                    st.markdown("---")
+
+                    # ── Evolución POMS ──────────────────────────
+                    st.subheader("🧠 Evolución de Estados Afectivos (POMS)")
+                    fig_poms = go.Figure()
+                    df_sorted = df_ind.sort_values("fecha_dt")
+                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_tension"],
+                        name="Tensión", line=dict(color="red", width=2)))
+                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_fatigue"],
+                        name="Fatiga", line=dict(color="orange", width=2)))
+                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_vigor"],
+                        name="Vigor", line=dict(color="green", width=2)))
+                    fig_poms.update_layout(
+                        xaxis_title="Fecha", yaxis_title="Intensidad (0-1)",
+                        hovermode="x unified",
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+                    )
+                    st.plotly_chart(fig_poms, use_container_width=True)
+
+                    st.markdown("---")
+
+                    # ── Textos libres ───────────────────────────
+                    st.subheader("📝 Textos Libres por Sesión")
+                    st.caption("⚠️ Información sensible — uso exclusivo del psicólogo orientador.")
+                    for _, row in df_ind.iterrows():
+                        texto = row["texto_libre"]
+                        if texto and texto.strip():
+                            with st.expander(f"Sesión: {row['fecha']} — Riesgo: {row['riesgo']}"):
+                                st.markdown(f"""
+                                <div style='background:#1a1a2e;padding:15px;border-radius:8px;
+                                border-left:4px solid #4fc3f7;color:#e0e0e0;font-style:italic;'>
+                                "{texto}"
+                                </div>
+                                """, unsafe_allow_html=True)
+                                st.caption(f"Perfil: {row['perfil']} | Puntaje: {row['puntaje']:.3f}")
+
+                    st.markdown("---")
+
+                    # ── Exportar PDF individual ─────────────────
+                    st.subheader("📄 Exportar Reporte Individual")
+                    if st.button("Generar PDF de este estudiante", use_container_width=True):
+                        try:
+                            pdf_bytes = generar_pdf_historial_bytes(
+                                f"Estudiante ID {uid_sel}",
+                                df_ind[["fecha", "puntaje", "riesgo", "perfil"]].rename(
+                                    columns={"fecha": "Fecha", "puntaje": "Puntaje",
+                                             "riesgo": "Riesgo", "perfil": "Perfil"})
+                            )
+                            st.download_button(
+                                label="📥 Descargar PDF",
+                                data=pdf_bytes,
+                                file_name=f"reporte_estudiante_{uid_sel}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        except Exception as e:
+                            st.error(f"Error al generar PDF: {e}")
+
+        elif st.session_state.menu_psicologo == "Casos prioritarios":
+            st.title("🚨 Casos Prioritarios")
+            st.markdown("Estudiantes con riesgo alto que requieren seguimiento clínico.")
+
+            conn = get_conn()
+            try:
+                df_prior = pd.read_sql_query("""
+                    SELECT 
+                        u.id as usuario_id,
+                        u.nivel,
+                        u.edad,
+                        r.puntaje,
+                        r.riesgo,
+                        r.detalle,
+                        r.fecha,
+                        e.respuestas
+                    FROM resultados r
+                    JOIN encuestas e ON r.encuesta_id = e.id
+                    JOIN usuarios u ON e.usuario_id = u.id
+                    WHERE r.riesgo = 'Alto'
+                    ORDER BY r.puntaje DESC
+                """, conn)
+            finally:
+                conn.close()
+
+            if df_prior.empty:
+                st.success("🟢 No hay casos en riesgo alto actualmente.")
+            else:
+                df_prior["detalle_json"]    = df_prior["detalle"].apply(safe_json_load)
+                df_prior["respuestas_json"] = df_prior["respuestas"].apply(safe_json_load)
+                df_prior["perfil"]          = df_prior["detalle_json"].apply(lambda x: x.get("Perfil", "N/A"))
+                df_prior["texto_libre"]     = df_prior["respuestas_json"].apply(lambda x: x.get("texto", ""))
+
+                st.markdown(f"**{len(df_prior)}** casos en riesgo alto detectados.")
+
+                for _, caso in df_prior.iterrows():
+                    with st.expander(
+                        f"🔴 ID {caso['usuario_id']} | {caso['nivel']} | Puntaje: {caso['puntaje']:.3f} | {caso['fecha']}"):
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Puntaje", f"{caso['puntaje']:.3f}")
+                        with col2:
+                            st.metric("Perfil", caso["perfil"])
+                        with col3:
+                            st.metric("Nivel", caso["nivel"])
+
+                        if caso["texto_libre"] and caso["texto_libre"].strip():
+                            st.markdown("**Texto libre del estudiante:**")
+                            st.markdown(f"""
+                            <div style='background:#1a1a2e;padding:12px;border-radius:8px;
+                            border-left:4px solid #ff4444;color:#e0e0e0;font-style:italic;'>
+                            "{caso['texto_libre']}"
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.caption("El estudiante no escribió texto libre en esta sesión.")
+
+        elif st.session_state.menu_psicologo == "Dashboard historico":
+            show_dashboard_historico()
 
 # ================================================================
 # PIE DE PÁGINA
