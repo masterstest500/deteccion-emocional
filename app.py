@@ -2375,7 +2375,7 @@ def show_alertas_inteligentes():
     st.markdown(f"**{len(df)}** casos detectados en **Riesgo Alto** que requieren atención inmediata.")
 
     # Tabla de resumen de los casos en riesgo alto
-    st.dataframe(df[["resultado_id", "usuario_id", "nivel", "puntaje", "Causa Principal", "fecha", "texto"]].rename(
+    st.dataframe(df[["resultado_id", "usuario_id", "nivel", "puntaje", "Causa Principal", "fecha"]].rename(
         columns={
             "resultado_id": "ID Resultado", 
             "usuario_id": "Usuario ID", 
