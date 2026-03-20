@@ -1825,13 +1825,17 @@ def show_dashboard_historico():
     # Extraer datos de la encuesta base
     def extract_base_value(respuestas, key):
         try:
-            return respuestas.get("base", {}).get(key, 3)
+            # Primero intenta directo, luego dentro de "base"
+            valor = respuestas.get(key)
+            if valor is None:
+                valor = respuestas.get("base", {}).get(key, 3)
+            return valor if valor is not None else 3
         except:
             return 3
     
-    df["base_estres"] = df["respuestas_json"].apply(lambda x: extract_base_value(x, "estres"))
-    df["base_motivacion"] = df["respuestas_json"].apply(lambda x: extract_base_value(x, "motivacion"))
-    df["base_animo"] = df["respuestas_json"].apply(lambda x: extract_base_value(x, "animo"))
+    df["base_estres"]     = df["respuestas_json"].apply(lambda x: extract_base_value(x, "estres"))
+    df["base_motivacion"] = df["respuestas_json"].apply(lambda x: extract_base_value(x, "social"))
+    df["base_animo"]      = df["respuestas_json"].apply(lambda x: extract_base_value(x, "animo"))
     
     # ===== FILTROS (MODIFICADO) =====
     st.sidebar.subheader("🎛️ Filtros de Análisis")
@@ -1924,6 +1928,17 @@ def show_dashboard_historico():
     fig_puntaje.add_hline(y=3.0, line_dash="dash", line_color="red", annotation_text="Límite Riesgo Medio")
     fig_puntaje.add_hline(y=4.2, line_dash="dash", line_color="darkred", annotation_text="Límite Riesgo Alto")
     st.plotly_chart(fig_puntaje, use_container_width=True)
+
+    st.caption("La línea muestra cómo ha evolucionado el riesgo promedio. Por encima de 0.65 es zona de alerta.")
+    with st.expander("¿Cómo leer este gráfico?"):
+        st.markdown("""
+        Muestra la evolución del puntaje de riesgo promedio a lo largo del tiempo.
+        - **Por encima de 0.65**: zona de riesgo alto — requiere atención.
+        - **Entre 0.40 y 0.65**: zona media — seguimiento recomendado.
+        - **Por debajo de 0.40**: zona estable — situación favorable.
+        
+        *Una tendencia ascendente sostenida es más preocupante que un pico aislado.*
+        """)
     
     # ===== EVOLUCIÓN DE ESTRÉS Y MOTIVACIÓN =====
     st.header("😌 Evolución de Estrés y Motivación")
