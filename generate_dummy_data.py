@@ -1,4 +1,4 @@
-# generate_dummy_data.py
+# generate_dummy_data.py — Versión actualizada con lógica calibrada 0-1
 import sqlite3
 import json
 import random
@@ -6,451 +6,447 @@ from datetime import datetime, timedelta
 import os
 import sys
 
-# Añadir el directorio actual al path para importar módulos locales
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from init_db import init_db, get_db_path
     DB_PATH = get_db_path()
 except ImportError:
-    print("⚠️ Error: No se pudo importar init_db.py")
-    print("💡 Asegúrate de que init_db.py esté en el mismo directorio")
+    print("Error: No se pudo importar init_db.py")
     sys.exit(1)
 
-# ===============================================================
-# UTILIDADES DE BASE DE DATOS (simplificadas para este script)
-# ===============================================================
+# ================================================================
+# UTILIDADES DE BASE DE DATOS
+# ================================================================
 
 def get_conn():
-    """Establece conexión a la base de datos."""
     return sqlite3.connect(DB_PATH)
 
-def save_user(rol: str, edad: int, nivel: str):
-    """Inserta un nuevo usuario y retorna su ID."""
+def save_user(rol, edad, nivel):
     conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO usuarios (rol, edad, nivel) VALUES (?, ?, ?)",
-        (rol, edad, nivel)
-    )
+    c = conn.cursor()
+    c.execute("INSERT INTO usuarios (rol, edad, nivel) VALUES (?, ?, ?)", (rol, edad, nivel))
     conn.commit()
-    user_id = cursor.lastrowid
+    uid = c.lastrowid
     conn.close()
-    return user_id
+    return uid
 
-def save_survey(user_id: int, respuestas: dict, fecha: datetime):
-    """Inserta una encuesta y retorna su ID."""
+def save_survey(uid, respuestas, fecha):
     conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO encuestas (usuario_id, respuestas, fecha) VALUES (?, ?, ?)",
-        (user_id, json.dumps(respuestas, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S'))
-    )
+    c = conn.cursor()
+    c.execute("INSERT INTO encuestas (usuario_id, respuestas, fecha) VALUES (?, ?, ?)",
+              (uid, json.dumps(respuestas, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
-    survey_id = cursor.lastrowid
+    eid = c.lastrowid
     conn.close()
-    return survey_id
+    return eid
 
-def save_result(survey_id: int, riesgo: str, puntaje: float, detalle: dict, fecha: datetime):
-    """Inserta el resultado de una encuesta."""
+def save_result(eid, riesgo, puntaje, detalle, fecha):
     conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO resultados (encuesta_id, puntaje, riesgo, detalle, fecha) VALUES (?, ?, ?, ?, ?)",
-        (survey_id, puntaje, riesgo, json.dumps(detalle, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S'))
-    )
+    c = conn.cursor()
+    c.execute("INSERT INTO resultados (encuesta_id, puntaje, riesgo, detalle, fecha) VALUES (?, ?, ?, ?, ?)",
+              (eid, puntaje, riesgo, json.dumps(detalle, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S')))
     conn.commit()
     conn.close()
 
-# ===============================================================
-# FUNCIONES DE ANÁLISIS COMPATIBLES CON app.py
-# ===============================================================
+# ================================================================
+# ANÁLISIS NLP VENEZOLANO (compatible con app.py)
+# ================================================================
 
-def analyze_text_advanced(text: str):
-    """Analiza texto con TextBlob y cuenta palabras negativas."""
-    if not text:
+PALABRAS_NEGATIVAS = [
+    "triste", "mal", "cansado", "solo", "estresado", "ansioso", "deprimido",
+    "agotado", "preocupado", "paranoia", "frustrado", "irritable", "angustia",
+    "arrecho", "arrechera", "harto", "desesperado", "rendido", "quemado",
+    "vacío", "inútil", "fracasado", "odio", "rabia", "miedo", "pánico"
+]
+
+EMOCIONES_VE = {
+    "tristeza": ["triste", "tristeza", "deprimido", "abatido", "desanimado", "solo", "vacío"],
+    "ansiedad": ["ansioso", "ansiedad", "nervioso", "estresado", "angustia", "preocupado", "pánico"],
+    "agotamiento": ["cansado", "agotado", "fatiga", "exhausto", "rendido", "quemado", "burnout"],
+    "frustracion": ["frustrado", "rabia", "enojado", "arrecho", "harto", "odio"],
+    "alegria": ["feliz", "alegre", "bien", "chévere", "motivado", "positivo", "tranquilo"]
+}
+
+def analyze_text_simple(text):
+    if not text or not text.strip():
         return 0.0, 0.0, 0
-    
-    from textblob import TextBlob
-    blob = TextBlob(text)
-    polarity = blob.sentiment.polarity
-    subjectivity = blob.sentiment.subjectivity
-    
-    # Lista de palabras negativas (debe coincidir con app.py)
-    negative_words = ["triste", "cansado", "estres", "mal", "ansioso", "pelear", "ignoran", 
-                      "solo", "estresado", "ansioso", "deprimido", "agotado", "preocupado", 
-                      "paranoia", "frustrado", "irritable", "angustia", "abatido", "desanimado",
-                      "rabioso", "somnoliento"]
-    
     text_lower = text.lower()
-    neg_count = sum(1 for word in negative_words if word in text_lower)
-    
-    return polarity, subjectivity, neg_count
+    neg_count = sum(1 for w in PALABRAS_NEGATIVAS if w in text_lower)
+    scores = {e: sum(1 for p in palabras if p in text_lower)
+              for e, palabras in EMOCIONES_VE.items()}
+    total_emocional = sum(scores.values())
+    alegria = scores.get("alegria", 0)
+    negativo_total = sum(v for k, v in scores.items() if k != "alegria")
+    if total_emocional == 0:
+        polarity = 0.0
+    else:
+        polarity = (alegria - negativo_total) / max(total_emocional, 1)
+    polarity = max(-1.0, min(1.0, round(polarity, 3)))
+    words = len(text.split())
+    subjectivity = min(total_emocional / max(words, 1) * 3, 1.0) if words > 0 else 0.0
+    return polarity, round(subjectivity, 3), neg_count
 
-def score_poms(poms_answers: dict):
-    """Calcula puntajes POMS (normalizados en 0..1)."""
-    scores = {}
-    
-    # Mapeo de categorías POMS según app.py
-    poms_categories = {
-        "tension": ["nervioso", "tenso", "estresado"],
-        "depression": ["triste", "abatido", "desanimado"],
-        "anger": ["irritable", "rabioso", "frustrado"],
-        "fatigue": ["cansado", "agotado", "somnoliento"],
-        "vigor": ["activo", "energético", "alerta"]
-    }
-    
-    for category, items in poms_categories.items():
-        total = 0
-        count = 0
-        for item in items:
-            val = poms_answers.get(item, 3)  # Valor por defecto 3 (neutral)
-            total += float(val)
-            count += 1
-        if count > 0:
-            avg = total / count
-            scores[category] = round((avg - 1) / 4, 3)  # Normalizar 1-5 a 0-1
-    
-    return scores
+# ================================================================
+# LÓGICA DE CÁLCULO CALIBRADA 0-1 (idéntica a app.py)
+# ================================================================
 
-def normalize_va(valence_raw: int, arousal_raw: int, v_min=1, v_max=9, a_min=1, a_max=9):
-    """Normaliza Valence (1..9 -> -1..1) y Arousal (1..9 -> 0..1)."""
-    valence = ((valence_raw - v_min) / (v_max - v_min)) * 2 - 1
-    arousal = (arousal_raw - a_min) / (a_max - a_min)
+def normalize_va(valence_raw, arousal_raw):
+    valence = ((valence_raw - 1) / 8) * 2 - 1
+    arousal = (arousal_raw - 1) / 8
     return round(valence, 3), round(arousal, 3)
 
-def classify_profile(promedio_encuesta: float, polarity: float, subj: float, poms_scores: dict, neg_words: int):
-    """Clasifica el perfil emocional heurístico (compatible con app.py)."""
-    # Esta función debe coincidir exactamente con la de app.py
-    if promedio_encuesta >= 4.5 and polarity >= 0 and poms_scores.get("vigor", 0) >= 0.6:
+def score_poms(answers):
+    cats = {
+        "tension":    ["nervioso", "tenso", "estresado"],
+        "depression": ["triste", "abatido", "desanimado"],
+        "fatigue":    ["cansado", "agotado", "somnoliento"],
+        "vigor":      ["activo", "energético", "alerta"]
+    }
+    scores = {}
+    for sub, items in cats.items():
+        vals = [float(answers.get(i, 3)) for i in items]
+        avg = sum(vals) / len(vals)
+        scores[sub] = round((avg - 1) / 4, 3)
+    return scores
+
+def calcular_puntaje(nivel, respuestas, polarity, neg_count):
+    nd_score = 0.5
+    valence_calc = round((polarity + 1) / 2 * 2 - 1, 3)
+    arousal_calc = 0.5
+
+    if nivel == "Primaria":
+        mapa = {"😀":1,"🙂":2,"😐":3,"🙁":4,"😢":5,
+                "⚡":1,"🥱":4,"😴":5}
+        emo = mapa.get(respuestas.get("emocion","😐"), 3)
+        ene = mapa.get(respuestas.get("energia","😐"), 3)
+        conv = respuestas.get("convivencia", 3)
+        seg  = respuestas.get("seguridad", 3)
+        prom_raw = (emo + ene + conv + seg) / 4
+        prom_norm = (prom_raw - 1) / 4
+        texto_pen = neg_count * 0.05 + (1 - polarity) * 0.05
+        puntaje = prom_norm + texto_pen
+
+        nd_a = mapa.get(respuestas.get("nd_atencion","😐"), 3)
+        nd_s = mapa.get(respuestas.get("nd_sensorial","😐"), 3)
+        nd_o = mapa.get(respuestas.get("nd_olvidos","😐"), 3)
+        nd_score = ((nd_a + nd_s + nd_o) / 3 - 1) / 4
+
+    elif nivel == "Secundaria":
+        q = respuestas
+        estres_n  = (q.get("estres",3) - 1) / 4
+        animo_n   = (5 - q.get("animo",3)) / 4
+        presion_n = (q.get("presion",3) - 1) / 4
+        sueno_n   = (5 - q.get("sueno",3)) / 4
+        conexion_n= (5 - q.get("conexion",3)) / 4
+        prom_norm = (estres_n + animo_n + presion_n + sueno_n + conexion_n) / 5
+        texto_pen = neg_count * 0.05 + (1 - polarity) * 0.05
+        puntaje = prom_norm + texto_pen
+
+        nd_items = [q.get("nd_atencion",3), q.get("nd_sensorial",3),
+                    q.get("nd_inicio",3), q.get("nd_olvidos",3), q.get("nd_social",3)]
+        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
+
+    else:  # Universidad
+        q = respuestas
+        estres_n  = (q.get("estres",3) - 1) / 4
+        fatiga_n  = (q.get("fatiga",3) - 1) / 4
+        presion_n = (q.get("presion",3) - 1) / 4
+        burnout_n = (q.get("burnout",3) - 1) / 4
+        suenio_n  = (5 - q.get("suenio",3)) / 4
+        social_n  = (5 - q.get("social",3)) / 4
+        base_norm = (estres_n + fatiga_n + presion_n + burnout_n + suenio_n + social_n) / 6
+
+        tension_n   = (q.get("poms_tension",3) - 1) / 4
+        depresion_n = (q.get("poms_depresion",3) - 1) / 4
+        fatiga_p_n  = (q.get("poms_fatiga",3) - 1) / 4
+        vigor_n     = (5 - q.get("poms_vigor",3)) / 4
+        poms_norm = (tension_n + depresion_n + fatiga_p_n + vigor_n) / 4
+
+        texto_pen = neg_count * 0.03 + (1 - polarity) * 0.03
+        puntaje = base_norm * 0.70 + poms_norm * 0.30 + texto_pen
+
+        vr = q.get("valence_raw", 5)
+        ar = q.get("arousal_raw", 5)
+        valence_calc, arousal_calc = normalize_va(vr, ar)
+
+        nd_items = [q.get("nd_atencion",3), q.get("nd_sensorial",3), q.get("nd_inicio",3),
+                    q.get("nd_olvidos",3), q.get("nd_rutinas",3), q.get("nd_social",3)]
+        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
+
+    # Asegurar que el puntaje no supere 1.0
+    puntaje = min(puntaje, 1.0)
+
+    if puntaje >= 0.65:
+        riesgo = "Alto"
+    elif puntaje >= 0.40:
+        riesgo = "Medio"
+    else:
+        riesgo = "Bajo"
+
+    return round(puntaje, 3), riesgo, valence_calc, arousal_calc, nd_score
+
+def classify_profile(puntaje, polarity, subj, poms_scores, neg_words):
+    vigor      = poms_scores.get("vigor", 0.5)
+    fatigue    = poms_scores.get("fatigue", 0.5)
+    tension    = poms_scores.get("tension", 0.5)
+    depression = poms_scores.get("depression", 0.5)
+    if puntaje <= 0.40 and polarity >= 0 and vigor >= 0.5:
         return "Resiliente"
-    if poms_scores.get("fatigue", 0) >= 0.6 and promedio_encuesta >= 4:
+    if fatigue >= 0.55 and puntaje >= 0.40:
         return "Fatigado"
-    if promedio_encuesta >= 4 and (poms_scores.get("tension", 0) >= 0.5 or neg_words >= 3):
+    if tension >= 0.45 or neg_words >= 2:
         return "Estrés"
-    if subj >= 0.7 and abs(polarity) < 0.15:
+    if subj >= 0.60 and abs(polarity) < 0.20:
         return "Inestable emocional"
-    if (poms_scores.get("depression", 0) >= 0.5 and polarity < -0.2) or (neg_words >= 4 and promedio_encuesta >= 4.2):
+    if depression >= 0.45 and polarity < -0.15:
+        return "Riesgo neuro-afectivo"
+    if neg_words >= 3 and puntaje >= 0.55:
         return "Riesgo neuro-afectivo"
     return "Perfil mixto"
 
-# ===============================================================
-# GENERACIÓN DE DATOS DUMMY (6 ESTUDIANTES REALISTAS)
-# ===============================================================
+# ================================================================
+# DATOS DE PRUEBA — 20 ESTUDIANTES REALISTAS
+# ================================================================
 
-def generate_dummy_data(clean_db=True):
-    """
-    Genera 6 usuarios estudiantes con encuestas realistas.
-    
-    Args:
-        clean_db (bool): Si True, elimina la base de datos existente antes de crear datos nuevos.
-    """
+USUARIOS_DEMO = [
+    # PRIMARIA — BAJO RIESGO
+    {"rol":"estudiante","edad":7,"nivel":"Primaria","days_ago":7,"respuestas":{
+        "emocion":"😀","energia":"⚡","convivencia":1,"seguridad":1,
+        "nd_atencion":"😀","nd_sensorial":"😀","nd_olvidos":"🙂",
+        "texto":"Me siento muy feliz en la escuela y juego mucho con mis amigos."
+    }},
+    {"rol":"estudiante","edad":8,"nivel":"Primaria","days_ago":5,"respuestas":{
+        "emocion":"🙂","energia":"😐","convivencia":2,"seguridad":2,
+        "nd_atencion":"🙂","nd_sensorial":"😐","nd_olvidos":"🙂",
+        "texto":"Hoy estuve bien, me gusta la clase de matemáticas."
+    }},
+    # PRIMARIA — MEDIO RIESGO
+    {"rol":"estudiante","edad":9,"nivel":"Primaria","days_ago":3,"respuestas":{
+        "emocion":"🙁","energia":"🥱","convivencia":4,"seguridad":3,
+        "nd_atencion":"🙁","nd_sensorial":"😐","nd_olvidos":"🙁",
+        "texto":"No me gusta la tarea, me estresa mucho. Me siento nervioso a veces."
+    }},
+    # PRIMARIA — ALTO RIESGO
+    {"rol":"estudiante","edad":10,"nivel":"Primaria","days_ago":1,"respuestas":{
+        "emocion":"😢","energia":"😴","convivencia":5,"seguridad":5,
+        "nd_atencion":"😢","nd_sensorial":"🙁","nd_olvidos":"😢",
+        "texto":"Estoy triste y cansado. No quiero ir a la escuela, me siento solo."
+    }},
+    # SECUNDARIA — BAJO RIESGO
+    {"rol":"estudiante","edad":13,"nivel":"Secundaria","days_ago":6,"respuestas":{
+        "estres":2,"animo":2,"presion":2,"sueno":2,"autoeficacia":2,"conexion":2,
+        "nd_atencion":1,"nd_sensorial":1,"nd_inicio":2,"nd_olvidos":1,"nd_social":2,
+        "texto":"Me siento bien, organicé mis materias y tengo tiempo libre."
+    }},
+    {"rol":"estudiante","edad":14,"nivel":"Secundaria","days_ago":4,"respuestas":{
+        "estres":2,"animo":2,"presion":3,"sueno":2,"autoeficacia":2,"conexion":2,
+        "nd_atencion":2,"nd_sensorial":2,"nd_inicio":2,"nd_olvidos":2,"nd_social":2,
+        "texto":"Todo está tranquilo, me llevo bien con mis compañeros."
+    }},
+    # SECUNDARIA — MEDIO RIESGO
+    {"rol":"estudiante","edad":15,"nivel":"Secundaria","days_ago":3,"respuestas":{
+        "estres":3,"animo":3,"presion":4,"sueno":4,"autoeficacia":3,"conexion":4,
+        "nd_atencion":3,"nd_sensorial":2,"nd_inicio":3,"nd_olvidos":3,"nd_social":3,
+        "texto":"Estoy cansado todo el tiempo, paso horas en el celular y no duermo bien."
+    }},
+    {"rol":"estudiante","edad":15,"nivel":"Secundaria","days_ago":2,"respuestas":{
+        "estres":4,"animo":3,"presion":3,"sueno":4,"autoeficacia":3,"conexion":3,
+        "nd_atencion":4,"nd_sensorial":3,"nd_inicio":4,"nd_olvidos":3,"nd_social":3,
+        "texto":"Me cuesta concentrarme en clases, me distraigo mucho."
+    }},
+    # SECUNDARIA — ALTO RIESGO
+    {"rol":"estudiante","edad":16,"nivel":"Secundaria","days_ago":1,"respuestas":{
+        "estres":5,"animo":2,"presion":5,"sueno":5,"autoeficacia":1,"conexion":5,
+        "nd_atencion":4,"nd_sensorial":3,"nd_inicio":5,"nd_olvidos":4,"nd_social":5,
+        "texto":"Me siento solo. Mis amigos me ignoran y no tengo motivación para ir a clases. Estoy agotado y frustrado."
+    }},
+    {"rol":"estudiante","edad":17,"nivel":"Secundaria","days_ago":0,"respuestas":{
+        "estres":5,"animo":1,"presion":4,"sueno":5,"autoeficacia":2,"conexion":5,
+        "nd_atencion":5,"nd_sensorial":4,"nd_inicio":5,"nd_olvidos":4,"nd_social":4,
+        "texto":"Estoy muy estresado y ansioso. No puedo dormir, me siento deprimido y sin energía."
+    }},
+    # UNIVERSIDAD — BAJO RIESGO
+    {"rol":"estudiante","edad":19,"nivel":"Universidad","days_ago":7,"respuestas":{
+        "estres":2,"fatiga":1,"presion":2,"burnout":1,"suenio":2,"social":2,
+        "poms_tension":1,"poms_depresion":1,"poms_fatiga":2,"poms_vigor":4,
+        "valence_raw":7,"arousal_raw":6,
+        "nd_atencion":1,"nd_sensorial":1,"nd_inicio":2,"nd_olvidos":1,"nd_rutinas":1,"nd_social":2,
+        "texto":"Terminando el semestre, me siento bien y organizado. Tengo buen apoyo de mi familia."
+    }},
+    {"rol":"estudiante","edad":20,"nivel":"Universidad","days_ago":5,"respuestas":{
+        "estres":2,"fatiga":2,"presion":2,"burnout":1,"suenio":2,"social":2,
+        "poms_tension":2,"poms_depresion":1,"poms_fatiga":2,"poms_vigor":4,
+        "valence_raw":6,"arousal_raw":5,
+        "nd_atencion":2,"nd_sensorial":1,"nd_inicio":2,"nd_olvidos":2,"nd_rutinas":2,"nd_social":2,
+        "texto":"Me siento tranquilo, estoy avanzando bien en mis proyectos."
+    }},
+    # UNIVERSIDAD — MEDIO RIESGO
+    {"rol":"estudiante","edad":20,"nivel":"Universidad","days_ago":4,"respuestas":{
+        "estres":3,"fatiga":3,"presion":3,"burnout":3,"suenio":3,"social":3,
+        "poms_tension":3,"poms_depresion":3,"poms_fatiga":3,"poms_vigor":3,
+        "valence_raw":5,"arousal_raw":5,
+        "nd_atencion":3,"nd_sensorial":2,"nd_inicio":3,"nd_olvidos":3,"nd_rutinas":2,"nd_social":3,
+        "texto":"Más o menos, hay días buenos y días malos. Trato de mantenerme."
+    }},
+    {"rol":"estudiante","edad":21,"nivel":"Universidad","days_ago":3,"respuestas":{
+        "estres":4,"fatiga":3,"presion":3,"burnout":3,"suenio":4,"social":3,
+        "poms_tension":3,"poms_depresion":2,"poms_fatiga":3,"poms_vigor":3,
+        "valence_raw":4,"arousal_raw":4,
+        "nd_atencion":3,"nd_sensorial":3,"nd_inicio":3,"nd_olvidos":3,"nd_rutinas":3,"nd_social":3,
+        "texto":"La universidad es exigente, a veces me siento abrumado pero lo manejo."
+    }},
+    {"rol":"estudiante","edad":22,"nivel":"Universidad","days_ago":2,"respuestas":{
+        "estres":4,"fatiga":4,"presion":4,"burnout":3,"suenio":4,"social":3,
+        "poms_tension":4,"poms_depresion":3,"poms_fatiga":4,"poms_vigor":2,
+        "valence_raw":3,"arousal_raw":4,
+        "nd_atencion":4,"nd_sensorial":3,"nd_inicio":4,"nd_olvidos":3,"nd_rutinas":3,"nd_social":3,
+        "texto":"Estoy cansado y preocupado por los exámenes. Me cuesta concentrarme."
+    }},
+    # UNIVERSIDAD — ALTO RIESGO
+    {"rol":"estudiante","edad":21,"nivel":"Universidad","days_ago":2,"respuestas":{
+        "estres":5,"fatiga":5,"presion":5,"burnout":5,"suenio":5,"social":5,
+        "poms_tension":5,"poms_depresion":4,"poms_fatiga":5,"poms_vigor":1,
+        "valence_raw":2,"arousal_raw":7,
+        "nd_atencion":5,"nd_sensorial":4,"nd_inicio":5,"nd_olvidos":4,"nd_rutinas":4,"nd_social":5,
+        "texto":"La carga académica es excesiva, me siento atrapado y ansioso. No puedo dormir más de 4 horas. Necesito ayuda."
+    }},
+    {"rol":"estudiante","edad":23,"nivel":"Universidad","days_ago":1,"respuestas":{
+        "estres":5,"fatiga":5,"presion":4,"burnout":5,"suenio":5,"social":4,
+        "poms_tension":5,"poms_depresion":5,"poms_fatiga":5,"poms_vigor":1,
+        "valence_raw":1,"arousal_raw":6,
+        "nd_atencion":5,"nd_sensorial":5,"nd_inicio":5,"nd_olvidos":5,"nd_rutinas":4,"nd_social":5,
+        "texto":"Estoy agotado y deprimido. No encuentro sentido a seguir estudiando. Me siento frustrado y desesperado."
+    }},
+    {"rol":"estudiante","edad":20,"nivel":"Universidad","days_ago":1,"respuestas":{
+        "estres":5,"fatiga":4,"presion":5,"burnout":4,"suenio":5,"social":5,
+        "poms_tension":4,"poms_depresion":4,"poms_fatiga":4,"poms_vigor":2,
+        "valence_raw":2,"arousal_raw":5,
+        "nd_atencion":4,"nd_sensorial":4,"nd_inicio":4,"nd_olvidos":4,"nd_rutinas":4,"nd_social":4,
+        "texto":"Todo está mal. Estoy solo, ansioso y no puedo concentrarme en nada."
+    }},
+    {"rol":"estudiante","edad":22,"nivel":"Universidad","days_ago":0,"respuestas":{
+        "estres":4,"fatiga":5,"presion":4,"burnout":5,"suenio":4,"social":4,
+        "poms_tension":4,"poms_depresion":3,"poms_fatiga":5,"poms_vigor":2,
+        "valence_raw":3,"arousal_raw":3,
+        "nd_atencion":3,"nd_sensorial":3,"nd_inicio":4,"nd_olvidos":4,"nd_rutinas":3,"nd_social":3,
+        "texto":"Me siento quemado. Demasiadas responsabilidades y poco descanso."
+    }},
+    {"rol":"estudiante","edad":19,"nivel":"Universidad","days_ago":0,"respuestas":{
+        "estres":3,"fatiga":3,"presion":3,"burnout":3,"suenio":3,"social":3,
+        "poms_tension":3,"poms_depresion":3,"poms_fatiga":3,"poms_vigor":3,
+        "valence_raw":5,"arousal_raw":5,
+        "nd_atencion":2,"nd_sensorial":2,"nd_inicio":2,"nd_olvidos":2,"nd_rutinas":2,"nd_social":2,
+        "texto":"Un día normal, sin nada especial que reportar."
+    }},
+]
+
+# ================================================================
+# FUNCIÓN PRINCIPAL
+# ================================================================
+
+def generate_dummy_data(clean_db=False):
     print("=" * 60)
-    print("🧪 GENERADOR DE DATOS DE PRUEBA")
+    print("🧪 GENERADOR DE DATOS DE PRUEBA — v2.0")
     print("=" * 60)
-    
-    # 1. Inicializar o limpiar base de datos
+
     if clean_db and os.path.exists(DB_PATH):
         print("🗑️  Eliminando base de datos existente...")
         os.remove(DB_PATH)
-    
+
     init_db()
-    print("✅ Base de datos inicializada")
-    
-    # Base de tiempo (días atrás)
+    print("✅ Base de datos inicializada\n")
+
     today = datetime.now()
-    
-    # Definición de los 6 estudiantes (actualizados para coincidir con app.py)
-    USERS = [
-        # USUARIO 1: PRIMARIA - BAJO RIESGO (RESILIENTE)
-        {
-            "rol": "estudiante", 
-            "edad": 7, 
-            "nivel": "Primaria", 
-            "days_ago": 7,
-            "respuestas": {
-                "emocion": "😀",
-                "energia": "⚡", 
-                "convivencia": 1, 
-                "seguridad": 1,
-                "texto": "Me siento muy feliz en la escuela y juego mucho con mis amigos. Me gusta mi profesora."
+    creados = 0
+
+    for i, u in enumerate(USUARIOS_DEMO, 1):
+        uid  = save_user(u["rol"], u["edad"], u["nivel"])
+        fecha = today - timedelta(days=u["days_ago"])
+        eid  = save_survey(uid, u["respuestas"], fecha)
+
+        texto = u["respuestas"].get("texto", "")
+        polarity, subjectivity, neg_count = analyze_text_simple(texto)
+
+        puntaje, riesgo, valence_calc, arousal_calc, nd_score = calcular_puntaje(
+            u["nivel"], u["respuestas"], polarity, neg_count)
+
+        # POMS para perfil
+        poms_scores = {}
+        if u["nivel"] == "Universidad":
+            q = u["respuestas"]
+            poms_answers = {
+                "nervioso": q.get("poms_tension",3), "tenso": q.get("poms_tension",3),
+                "estresado": q.get("poms_tension",3), "triste": q.get("poms_depresion",3),
+                "abatido": q.get("poms_depresion",3), "desanimado": q.get("poms_depresion",3),
+                "cansado": q.get("poms_fatiga",3), "agotado": q.get("poms_fatiga",3),
+                "somnoliento": q.get("poms_fatiga",3),
+                "activo": 6-q.get("poms_vigor",3), "energético": 6-q.get("poms_vigor",3),
+                "alerta": 6-q.get("poms_vigor",3)
             }
-        },
-        
-        # USUARIO 2: PRIMARIA - MEDIO RIESGO (ANSIEDAD INFANTIL)
-        {
-            "rol": "estudiante", 
-            "edad": 8, 
-            "nivel": "Primaria", 
-            "days_ago": 5,
-            "respuestas": {
-                "emocion": "🙁",
-                "energia": "🥱", 
-                "convivencia": 4, 
-                "seguridad": 3,
-                "texto": "No me gusta la tarea, me estresa mucho. A veces me duele la panza en la escuela y me siento nervioso."
-            }
-        },
-        
-        # USUARIO 3: SECUNDARIA - MEDIO RIESGO (FATIGA/DESMOTIVACIÓN)
-        {
-            "rol": "estudiante", 
-            "edad": 15, 
-            "nivel": "Secundaria", 
-            "days_ago": 3,
-            "respuestas": {
-                "estres": 3, 
-                "animo": 3,
-                "presion": 4, 
-                "sueno": 5,  # Invertido: 5 = mal sueño
-                "autoeficacia": 4, 
-                "conexion": 5,  # Invertido: 5 = desconectado
-                "texto": "Estoy muy cansado todo el tiempo, paso horas en el celular y no me da tiempo para dormir. No sé qué quiero estudiar."
-            }
-        },
-        
-        # USUARIO 4: SECUNDARIA - ALTO RIESGO (DEPRESIÓN LEVE/AISLAMIENTO)
-        {
-            "rol": "estudiante", 
-            "edad": 16, 
-            "nivel": "Secundaria", 
-            "days_ago": 2,
-            "respuestas": {
-                "estres": 5, 
-                "animo": 2,
-                "presion": 5, 
-                "sueno": 5,  # Invertido: 5 = mal sueño
-                "autoeficacia": 1, 
-                "conexion": 5,  # Invertido: 5 = desconectado
-                "texto": "Me siento solo. Mis amigos me ignoran y no tengo motivación para ir a clases. Todo es difícil. No quiero salir de casa."
-            }
-        },
-        
-        # USUARIO 5: UNIVERSIDAD - ALTO RIESGO (ESTRÉS ACADÉMICO SEVERO)
-        {
-            "rol": "estudiante", 
-            "edad": 21, 
-            "nivel": "Universidad", 
-            "days_ago": 1,
-            "respuestas": {
-                "estres": 5, 
-                "fatiga": 5,
-                "presion": 5, 
-                "burnout": 5,
-                "suenio": 5,  # Invertido: 5 = mal sueño
-                "social": 5,   # Invertido: 5 = poco apoyo social
-                "poms_tension": 5, 
-                "poms_depresion": 3,
-                "poms_fatiga": 5, 
-                "poms_vigor": 2,  # Invertido: 2 = bajo vigor
-                "texto": "La carga académica es excesiva, me siento atrapado y ansioso todo el tiempo. No puedo dormir más de 4 horas. Necesito ayuda."
-            }
-        },
-        
-        # USUARIO 6: UNIVERSIDAD - BAJO RIESGO (ESTABLE)
-        {
-            "rol": "estudiante", 
-            "edad": 22, 
-            "nivel": "Universidad", 
-            "days_ago": 0,
-            "respuestas": {
-                "estres": 2, 
-                "fatiga": 2,
-                "presion": 2, 
-                "burnout": 2,
-                "suenio": 2,  # Invertido: 2 = buen sueño
-                "social": 2,   # Invertido: 2 = buen apoyo social
-                "poms_tension": 1, 
-                "poms_depresion": 1,
-                "poms_fatiga": 2, 
-                "poms_vigor": 4,  # Invertido: 4 = alto vigor
-                "texto": "Terminando el semestre, me siento bien y listo para las vacaciones. He podido organizar mi tiempo de manera eficiente."
-            }
-        }
-    ]
-    
-    print(f"\n📋 Creando {len(USERS)} estudiantes de prueba...")
-    print("-" * 60)
-    
-    for i, user_data in enumerate(USERS, 1):
-        # 1. Registrar usuario
-        user_id = save_user(user_data["rol"], user_data["edad"], user_data["nivel"])
-        
-        # 2. Preparar datos de la encuesta
-        fecha = today - timedelta(days=user_data["days_ago"])
-        
-        # 3. Guardar encuesta
-        survey_id = save_survey(user_id, user_data["respuestas"], fecha)
-        
-        # 4. Análisis y cálculo de puntaje (simplificado para dummy data)
-        texto = user_data["respuestas"].get("texto", "")
-        polarity, subjectivity, neg_count = analyze_text_advanced(texto)
-        
-        # Preparar datos POMS según nivel
-        poms_data = {}
-        if user_data["nivel"] == "Universidad":
-            # Extraer POMS de las respuestas universitarias
-            poms_data = {
-                "nervioso": user_data["respuestas"].get("poms_tension", 3),
-                "tenso": user_data["respuestas"].get("poms_tension", 3),
-                "estresado": user_data["respuestas"].get("poms_tension", 3),
-                "triste": user_data["respuestas"].get("poms_depresion", 3),
-                "abatido": user_data["respuestas"].get("poms_depresion", 3),
-                "desanimado": user_data["respuestas"].get("poms_depresion", 3),
-                "cansado": user_data["respuestas"].get("poms_fatiga", 3),
-                "agotado": user_data["respuestas"].get("poms_fatiga", 3),
-                "somnoliento": user_data["respuestas"].get("poms_fatiga", 3),
-                "activo": 6 - user_data["respuestas"].get("poms_vigor", 3),  # Invertido
-                "energético": 6 - user_data["respuestas"].get("poms_vigor", 3),
-                "alerta": 6 - user_data["respuestas"].get("poms_vigor", 3)
-            }
-        
-        poms_scores = score_poms(poms_data)
-        
-        # Calcular puntaje según nivel (simplificado)
-        if user_data["nivel"] == "Primaria":
-            # Convertir caritas a números
-            mapa_caritas = {"😀":1, "🙂":2, "😐":3, "🙁":4, "😢":5, "⚡":1, "🥱":4, "😴":5}
-            emoscore = mapa_caritas.get(user_data["respuestas"].get("emocion", "😐"), 3)
-            energiascore = mapa_caritas.get(user_data["respuestas"].get("energia", "😐"), 3)
-            conviv = user_data["respuestas"].get("convivencia", 3)
-            segur = user_data["respuestas"].get("seguridad", 3)
-            
-            promedio = (emoscore + energiascore + conviv + segur) / 4
-            puntaje = promedio * 1.5 + neg_count * 0.5 + (1 - polarity) * 0.3
-            
-        elif user_data["nivel"] == "Secundaria":
-            q = user_data["respuestas"]
-            likerts = (q.get("estres", 3) + (6 - q.get("animo", 3)) + q.get("presion", 3) + 
-                      (6 - q.get("sueno", 3)) + (6 - q.get("conexion", 3))) / 5
-            puntaje = likerts * 1.2 + (1 - polarity) * 0.4 + neg_count * 0.4
-            
-        else:  # Universidad
-            q = user_data["respuestas"]
-            base = (q.get("estres", 3) + q.get("fatiga", 3) + q.get("presion", 3) + 
-                   q.get("burnout", 3) + (6 - q.get("suenio", 3)) + (6 - q.get("social", 3))) / 6
-            
-            poms = {
-                "tension": q.get("poms_tension", 3),
-                "depression": q.get("poms_depresion", 3),
-                "fatigue": q.get("poms_fatiga", 3),
-                "vigor": (6 - q.get("poms_vigor", 3))
-            }
-            
-            poms_score = (poms["tension"] + poms["depression"] + poms["fatigue"] + poms["vigor"]) / 4
-            puntaje = base * 0.8 + poms_score * 0.8 + (1 - polarity) * 0.2 + neg_count * 0.2
-        
-        puntaje = round(puntaje, 3)
-        
-        # Clasificación de riesgo
-        if puntaje >= 4.0:
-            riesgo = "Alto"
-        elif puntaje >= 2.5:
-            riesgo = "Medio"
-        else:
-            riesgo = "Bajo"
-        
-        # Perfil emocional
+            poms_scores = score_poms(poms_answers)
+
         perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
-        
-        # Crear detalle compatible con app.py
+
         detalle = {
             "Perfil": perfil,
-            "Polarity": round(polarity, 3),
-            "Subj": round(subjectivity, 3),
+            "Polarity": polarity,
+            "Subj": subjectivity,
             "NegWords": neg_count,
             "TextoSnippet": texto[:100] + "..." if len(texto) > 100 else texto,
-            "Promedio": round(puntaje, 2),
+            "Promedio": puntaje,
             "Riesgo": riesgo,
             "POMS": poms_scores,
-            "VA": {"valence": 0.0, "arousal": 0.5}  # Placeholder para dummy data
+            "VA": {"valence": valence_calc, "arousal": arousal_calc},
+            "Neurodiv": {
+                "atencion": round(u["respuestas"].get("nd_atencion", 3) / 5
+                    if isinstance(u["respuestas"].get("nd_atencion",3), int) else 0.5, 3),
+                "sensibilidad": round(u["respuestas"].get("nd_sensorial", 3) / 5
+                    if isinstance(u["respuestas"].get("nd_sensorial",3), int) else 0.5, 3),
+                "nd_score": round(nd_score, 3)
+            }
         }
-        
-        # 5. Guardar resultado
-        save_result(survey_id, riesgo, puntaje, detalle, fecha)
-        
-        print(f"✅ Estudiante {i}: ID {user_id} ({user_data['nivel']})")
-        print(f"   📅 Fecha: {fecha.strftime('%Y-%m-%d')}")
-        print(f"   📊 Riesgo: {riesgo} | Puntaje: {puntaje:.2f}")
-        print(f"   👤 Perfil: {perfil}")
-        print(f"   💬 Texto: {texto[:50]}..." if len(texto) > 50 else f"   💬 Texto: {texto}")
-        print()
-    
-    # Mostrar resumen final
+
+        save_result(eid, riesgo, puntaje, detalle, fecha)
+        creados += 1
+
+        emoji = {"Alto":"🔴","Medio":"🟠","Bajo":"🟢"}.get(riesgo,"⚪")
+        print(f"{emoji} [{u['nivel']:12}] ID {uid:2} | {riesgo:5} | {puntaje:.3f} | {perfil}")
+
+    print(f"\n✅ {creados} estudiantes creados correctamente")
     print("=" * 60)
-    print("📊 RESUMEN DE DATOS CREADOS")
-    print("=" * 60)
-    
+
     conn = get_conn()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    total_usuarios = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM encuestas")
-    total_encuestas = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM resultados")
-    total_resultados = cursor.fetchone()[0]
-    
-    print(f"👥 Usuarios creados: {total_usuarios}")
-    print(f"📝 Encuestas creadas: {total_encuestas}")
-    print(f"📊 Resultados creados: {total_resultados}")
-    
-    # Distribución de riesgo
-    print("\n📈 DISTRIBUCIÓN DE RIESGO:")
-    cursor.execute("SELECT riesgo, COUNT(*) FROM resultados GROUP BY riesgo ORDER BY riesgo")
-    for riesgo, count in cursor.fetchall():
-        print(f"   {riesgo}: {count}")
-    
-    # Distribución por nivel
-    print("\n🏫 DISTRIBUCIÓN POR NIVEL:")
-    cursor.execute("""
-        SELECT nivel, COUNT(*) 
-        FROM usuarios 
-        GROUP BY nivel 
-        ORDER BY CASE nivel
-            WHEN 'Primaria' THEN 1
-            WHEN 'Secundaria' THEN 2
-            WHEN 'Universidad' THEN 3
-            ELSE 4
-        END
-    """)
-    for nivel, count in cursor.fetchall():
-        print(f"   {nivel}: {count}")
-    
+    c = conn.cursor()
+    c.execute("SELECT riesgo, COUNT(*) FROM resultados GROUP BY riesgo")
+    dist = dict(c.fetchall())
+    c.execute("SELECT nivel, COUNT(*) FROM usuarios GROUP BY nivel")
+    niveles = dict(c.fetchall())
     conn.close()
-    
-    print("\n" + "=" * 60)
-    print("✨ DATOS DE PRUEBA CREADOS EXITOSAMENTE!")
+
+    print("📈 DISTRIBUCIÓN DE RIESGO:")
+    for r, n in dist.items():
+        print(f"   {r}: {n}")
+    print("🏫 POR NIVEL:")
+    for nv, n in niveles.items():
+        print(f"   {nv}: {n}")
     print("=" * 60)
-    print("\n💡 Siguientes pasos:")
-    print("1. Ejecuta: streamlit run app.py")
-    print("2. Usa la clave docente: 'admin123'")
-    print("3. Prueba todas las funcionalidades")
-    print("\n🔍 Para ver los datos: python ver_db.py")
+
 
 if __name__ == "__main__":
-    # Preguntar si limpiar la BD existente
     import argparse
-    parser = argparse.ArgumentParser(description='Generador de datos de prueba')
-    parser.add_argument('--keep', action='store_true', help='Mantener datos existentes (no limpiar BD)')
-    parser.add_argument('--clean', action='store_true', help='Limpiar BD antes de generar datos')
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--clean', action='store_true', help='Limpiar BD antes de generar')
+    parser.add_argument('--keep', action='store_true', help='Agregar a datos existentes')
     args = parser.parse_args()
-    
-    if args.keep:
-        generate_dummy_data(clean_db=False)
-    elif args.clean:
+
+    if args.clean:
         generate_dummy_data(clean_db=True)
+    elif args.keep:
+        generate_dummy_data(clean_db=False)
     else:
-        # Preguntar interactivamente
         if os.path.exists(DB_PATH):
-            respuesta = input("¿Deseas limpiar la base de datos existente? (si/no): ").lower()
-            if respuesta in ['si', 's', 'yes', 'y']:
-                generate_dummy_data(clean_db=True)
-            else:
-                print("⚠️  Los datos nuevos se añadirán a los existentes.")
-                generate_dummy_data(clean_db=False)
+            r = input("¿Limpiar base de datos existente? (si/no): ").lower()
+            generate_dummy_data(clean_db=r in ['si','s','yes','y'])
         else:
             generate_dummy_data(clean_db=True)
