@@ -1164,6 +1164,92 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     st.markdown("---")
     
     # ================================================================
+    # 4b. GRÁFICO RADAR EMOCIONAL
+    # ================================================================
+    st.subheader("🎯 Perfil Emocional Visual")
+    
+    # Preparar valores para el radar (todos en escala 0-1)
+    tension_radar  = min(poms_tension, 1.0)
+    fatigue_radar  = min(poms_fatigue, 1.0)
+    estres_radar   = min(promedio, 1.0)
+    valence_radar  = (valence + 1) / 2  # convertir -1..1 a 0..1
+    arousal_radar  = min(arousal, 1.0)
+
+    categorias = ["Estrés", "Fatiga", "Tensión", "Activación", "Estado\nEmocional"]
+    valores    = [estres_radar, fatigue_radar, tension_radar, arousal_radar, valence_radar]
+    
+    # Cerrar el polígono
+    categorias_cierre = categorias + [categorias[0]]
+    valores_cierre    = valores + [valores[0]]
+
+    fig_radar_ind = go.Figure()
+
+    # Color según riesgo
+    color_relleno = {
+        "Alto":  "rgba(255,68,68,0.3)",
+        "Medio": "rgba(255,170,68,0.3)",
+        "Bajo":  "rgba(68,204,68,0.3)"
+    }.get(riesgo, "rgba(79,195,247,0.3)")
+
+    color_linea = {
+        "Alto":  "#ff4444",
+        "Medio": "#ffaa44",
+        "Bajo":  "#44cc44"
+    }.get(riesgo, "#4fc3f7")
+
+    fig_radar_ind.add_trace(go.Scatterpolar(
+        r=valores_cierre,
+        theta=categorias_cierre,
+        fill='toself',
+        fillcolor=color_relleno,
+        line=dict(color=color_linea, width=2),
+        name="Tu perfil"
+    ))
+
+    fig_radar_ind.update_layout(
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(
+                visible=True,
+                range=[0, 1],
+                gridcolor="rgba(255,255,255,0.15)",
+                linecolor="rgba(255,255,255,0.15)",
+                tickfont=dict(color="rgba(255,255,255,0.5)", size=9),
+                tickvals=[0.25, 0.5, 0.75, 1.0],
+                ticktext=["Leve", "Moderado", "Alto", "Máximo"]
+            ),
+            angularaxis=dict(
+                gridcolor="rgba(255,255,255,0.15)",
+                linecolor="rgba(255,255,255,0.15)",
+                tickfont=dict(color="rgba(255,255,255,0.9)", size=11)
+            )
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        height=350,
+        margin=dict(t=30, b=30, l=60, r=60)
+    )
+
+    col_radar, col_legend = st.columns([2, 1])
+    with col_radar:
+        st.plotly_chart(fig_radar_ind, use_container_width=True)
+    with col_legend:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style='padding:15px;border-radius:8px;background:rgba(255,255,255,0.05);'>
+        <p style='color:#aaaaaa;font-size:0.85em;margin:0 0 10px 0;'>
+        <strong>Cómo leer el radar:</strong></p>
+        <p style='color:#cccccc;font-size:0.82em;margin:0;'>
+        Cada eje representa una dimensión emocional.<br><br>
+        El área <span style='color:{color_linea};'>coloreada</span> muestra 
+        tu perfil actual.<br><br>
+        Un polígono más pequeño indica menor malestar emocional.
+        </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    # ================================================================
     # 5. ANÁLISIS PSICOLÓGICO PROFESIONAL
     # ================================================================
     st.subheader("🔬 Análisis Psicológico y Neurocientífico")
