@@ -139,6 +139,17 @@ st.markdown("""
         display: none !important;
     }
             
+     /* Eliminar borde rojo de foco en botones */
+    .stButton > button:focus {
+        border-color: #4fc3f7 !important;
+        box-shadow: 0 0 0 2px rgba(79,195,247,0.3) !important;
+        outline: none !important;
+    }
+    .stButton > button:focus:not(:focus-visible) {
+        border-color: transparent !important;
+        box-shadow: none !important;
+    }       
+            
     /* Imágenes */
     .stImage img {
         max-width: 100%;
@@ -150,6 +161,14 @@ st.markdown("""
    /* Ocultar solo alertas automáticas de rerun */ 
     .stAlert[data-baseweb="notification"] {
         display: none !important;
+    }
+            
+    /* Sliders — color neutro azul en lugar de rojo */
+    .stSlider > div > div > div > div {
+        background: #4fc3f7 !important;
+    }
+    .stSlider > div > div > div {
+        background: rgba(79, 195, 247, 0.2) !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -1519,21 +1538,13 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     if texto_snippet and texto_snippet.strip() and texto_snippet != "N/A":
         st.markdown("---")
         st.subheader("📝 Contenido Analizado")
-        with st.expander("Ver texto proporcionado por el usuario", expanded=False):
-            st.markdown(f"""
-            <div style='
-                background-color: #f8f9fa;
-                padding: 15px;
-                border-radius: 8px;
-                border-left: 4px solid #4fc3f7;
-                font-style: italic;
-                margin: 10px 0;
-            '>
-            "{texto_snippet}"
-            </div>
-            """, unsafe_allow_html=True)
-            st.caption("*Este texto fue analizado utilizando Procesamiento de Lenguaje Natural (NLP) para extraer indicadores emocionales y cognitivos.*")
-    
+        st.markdown(f"""
+        <div style='background:#1a1a2e;padding:15px;border-radius:8px;
+        border-left:4px solid #4fc3f7;color:#e0e0e0;font-style:italic;margin:10px 0;'>
+        "{texto_snippet}"
+        </div>
+        """, unsafe_allow_html=True)
+        st.caption("Texto analizado con NLP para extraer indicadores emocionales y cognitivos.")
     # ================================================================
     # 10. DISCLAIMER PROFESIONAL
     # ================================================================
@@ -2256,7 +2267,24 @@ def show_dashboard_profesional():
             poms_group, r='Valor', theta='Métrica', color='nivel', 
             line_close=True,
             title="Estados afectivos promedio por nivel educativo",
-            range_r=[0, poms_group['Valor'].max() * 1.1] # Rango dinámico
+            range_r=[0, poms_group['Valor'].max() * 1.1]
+        )
+        fig_radar.update_layout(
+            polar=dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(
+                    gridcolor="rgba(255,255,255,0.15)",
+                    linecolor="rgba(255,255,255,0.15)",
+                    tickfont=dict(color="rgba(255,255,255,0.6)")
+                ),
+                angularaxis=dict(
+                    gridcolor="rgba(255,255,255,0.15)",
+                    linecolor="rgba(255,255,255,0.15)",
+                    tickfont=dict(color="rgba(255,255,255,0.8)")
+                )
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)"
         )
         st.plotly_chart(fig_radar, use_container_width=True)
         st.caption("Tensión y Fatiga altas son señales de alerta. Vigor alto indica buena energía grupal.")
