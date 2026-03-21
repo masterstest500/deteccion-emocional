@@ -170,6 +170,20 @@ st.markdown("""
     .stSlider > div > div > div {
         background: rgba(79, 195, 247, 0.2) !important;
     }
+
+
+    /* Ocultar botón START_TRANSITION sin romper funcionalidad */
+    div[data-testid="stButton"]:has(button[title="hidden_transition_button"]) {
+        position: fixed !important;
+        top: -9999px !important;
+        left: -9999px !important;
+        width: 1px !important;
+        height: 1px !important;
+        overflow: hidden !important;
+        clip: rect(0,0,0,0) !important;
+        white-space: nowrap !important;
+        pointer-events: none !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -841,14 +855,20 @@ def show_landing_page(logo_base64):
                 
                 // Enviar evento a Streamlit para pasar a la siguiente pantalla (loading)
                 setTimeout(() => {{
-                    const invisibleButton = window.parent.document.querySelector('[data-testid="stButton"] button');
-
-                    if (invisibleButton) {{
-                        invisibleButton.click();
-                    }} else {{
-                        console.error("No se encontró el botón de transición invisible.");
+                    const buttons = window.parent.document.querySelectorAll('button');
+                    let found = false;
+                    for (let btn of buttons) {{
+                        if (btn.innerText.trim() === 'START_TRANSITION') {{
+                            btn.style.pointerEvents = 'auto';
+                            btn.click();
+                            found = true;
+                            break;
+                        }}
                     }}
-                }}, 1200);  /* CAMBIO 2: Llave de cierre corregida aquí */
+                     if (!found) {{
+                        console.warn('Botón START_TRANSITION no encontrado');
+                    }}
+                }}, 1200);
             }}
             </script>
         </body>
@@ -857,18 +877,18 @@ def show_landing_page(logo_base64):
     
     # 4. Renderizar el IFRAME
     components.html(
-    html_content, 
-    height=700, 
-    scrolling=False 
-)
+        html_content, 
+        height=700, 
+        scrolling=False 
+    )
 
-# 5. Botón de Transición Invisible (Activado por JS)
-st.button(
-    "START_TRANSITION", 
-    on_click=lambda: setattr(st.session_state, 'landing_done', True),
-    key="transition_btn",
-    help="hidden_transition_button"  
-)
+    # 5. Botón de Transición Invisible (Activado por JS)
+    st.button(
+        "START_TRANSITION", 
+        on_click=lambda: setattr(st.session_state, 'landing_done', True),
+        key="transition_btn",
+        help="hidden_transition_button"  
+    )
 
 # 6. Hide Transition Button ONLY (Ultimate Solution)
 st.markdown("""
