@@ -2888,6 +2888,211 @@ def generar_excel_completo_bytes():
     return buffer.getvalue()
 
 # ================================================================
+# PÁGINA ACERCA DEL PROYECTO
+# ================================================================
+
+def show_acerca():
+    st.title("📖 Acerca del Proyecto")
+    st.markdown("---")
+
+    # ── Descripción general ────────────────────────────
+    st.subheader("🎯 ¿Qué es esta plataforma?")
+    st.markdown("""
+    <div style='background:rgba(79,195,247,0.08);border-left:4px solid #4fc3f7;
+    padding:20px;border-radius:10px;margin:10px 0;color:inherit;'>
+    Esta plataforma es un sistema de <strong>detección temprana de riesgos emocionales 
+    y cognitivos</strong> en entornos educativos venezolanos. Fue desarrollada como 
+    Trabajo Especial de Grado (TEG) para el IUT READIC-UNIR.<br><br>
+    Su propósito es proporcionar a docentes y psicólogos institucionales una herramienta 
+    de apoyo preventivo que permita identificar estudiantes en situación de vulnerabilidad 
+    emocional antes de que el malestar escale a una crisis, respetando en todo momento 
+    el anonimato y la dignidad del estudiante.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Contexto venezolano ────────────────────────────
+    st.subheader("🇻🇪 Contexto y relevancia")
+    st.markdown("""
+    <div style='background:rgba(255,170,68,0.08);border-left:4px solid #ffaa44;
+    padding:20px;border-radius:10px;margin:10px 0;color:inherit;'>
+    Venezuela enfrenta una situación de emergencia humanitaria compleja que impacta 
+    directamente el bienestar psicológico de su población estudiantil. Con menos del 
+    10% de la población accediendo a servicios de salud mental por barreras económicas, 
+    y con docentes que no tienen herramientas formales para detectar malestar emocional 
+    en el aula, existe una brecha crítica entre la necesidad y la atención disponible.<br><br>
+    Esta plataforma fue diseñada específicamente para ese contexto: funciona de forma 
+    local sin dependencia de servidores externos, no requiere internet para operar, 
+    y utiliza lenguaje natural venezolano para el análisis de texto.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Metodología ────────────────────────────────────
+    st.subheader("🔬 Fundamentos metodológicos")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;'>
+        <strong>Paradigma de investigación</strong><br><br>
+        El proyecto integra tres paradigmas complementarios:<br>
+        • <strong>Positivista</strong>: medición cuantitativa de indicadores emocionales<br>
+        • <strong>Interpretativo</strong>: análisis cualitativo del texto libre<br>
+        • <strong>Sociocrítico</strong>: intervención orientada al cambio social
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;'>
+        <strong>Metodología de diseño</strong><br><br>
+        Se aplica <strong>Design Science Research (DSR)</strong>, que orienta la 
+        construcción de artefactos tecnológicos como solución a problemas reales.<br><br>
+        El método es <strong>mixto</strong>: combina datos cuantitativos de las 
+        encuestas con datos cualitativos del análisis de texto libre.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Stack tecnológico ──────────────────────────────
+    st.subheader("⚙️ Stack tecnológico")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;text-align:center;'>
+        <strong>🐍 Backend</strong><br><br>
+        Python 3<br>
+        Streamlit<br>
+        SQLite<br>
+        python-dotenv
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;text-align:center;'>
+        <strong>🧠 Análisis</strong><br><br>
+        VADER + Diccionario VE<br>
+        scikit-learn (K-Means)<br>
+        POMS reducido<br>
+        Valence-Arousal
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;text-align:center;'>
+        <strong>📊 Visualización</strong><br><br>
+        Plotly Express<br>
+        Plotly Graph Objects<br>
+        ReportLab (PDF)<br>
+        OpenPyXL (Excel)
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Glosario ───────────────────────────────────────
+    st.subheader("📚 Glosario técnico")
+
+    with st.expander("Ver glosario de términos"):
+        st.markdown("""
+        **POMS (Profile of Mood States)**
+        Escala psicométrica validada que mide cinco estados afectivos: Tensión, 
+        Depresión, Fatiga, Vigor y Cólera. En esta plataforma se usa una versión 
+        reducida de 4 subescalas adaptada al contexto educativo.
+
+        ---
+
+        **Valence-Arousal (VA)**
+        Modelo bidimensional de las emociones propuesto por Russell (1980). 
+        La Valencia (Valence) indica si el estado emocional es positivo o negativo 
+        (escala -1 a +1). La Activación (Arousal) indica el nivel de energía o alerta 
+        (escala 0 a 1). Juntos ubican cualquier emoción en un mapa de dos dimensiones.
+
+        ---
+
+        **K-Means Clustering**
+        Algoritmo de aprendizaje automático no supervisado que agrupa estudiantes 
+        con patrones emocionales similares sin necesidad de etiquetas previas. 
+        Permite identificar subgrupos de riesgo dentro de una población estudiantil.
+
+        ---
+
+        **PCA (Análisis de Componentes Principales)**
+        Técnica de reducción de dimensionalidad que permite visualizar en 2 dimensiones 
+        datos que originalmente tienen 6 o más variables. Se usa para representar 
+        gráficamente los clusters de estudiantes.
+
+        ---
+
+        **NLP (Procesamiento de Lenguaje Natural)**
+        Rama de la inteligencia artificial que permite a los computadores analizar 
+        texto escrito en lenguaje humano. En esta plataforma se usa para detectar 
+        emociones y palabras de riesgo en el texto libre que escribe el estudiante.
+
+        ---
+
+        **Neurodiversidad**
+        Concepto que reconoce la variación natural en el funcionamiento neurológico 
+        humano. Los indicadores de neurodiversidad en esta plataforma son orientativos 
+        y detectan posibles dificultades de atención, sensorialidad y procesamiento 
+        cognitivo. No constituyen diagnóstico clínico.
+
+        ---
+
+        **Riesgo emocional preventivo**
+        A diferencia del diagnóstico clínico, el riesgo preventivo identifica señales 
+        tempranas de malestar antes de que alcancen niveles clínicamente significativos. 
+        Esta plataforma opera exclusivamente en ese nivel preventivo y orientativo.
+        """)
+
+    st.markdown("---")
+
+    # ── Declaración ética ──────────────────────────────
+    st.subheader("⚖️ Declaración ética")
+    st.markdown("""
+    <div style='background:#2d2d00;border:1px solid #ffaa00;border-radius:8px;
+    padding:15px;margin:10px 0;color:#ffd966;'>
+    <strong>Principios éticos del sistema:</strong><br><br>
+    • <strong>Anonimato:</strong> ningún dato permite identificar individualmente al estudiante.<br>
+    • <strong>Voluntariedad:</strong> la participación es libre y reversible en todo momento.<br>
+    • <strong>No diagnóstico:</strong> el sistema es preventivo y orientativo, nunca clínico.<br>
+    • <strong>Confidencialidad:</strong> los datos se almacenan localmente y no se comparten con terceros.<br>
+    • <strong>Beneficencia:</strong> el único propósito es el bienestar del estudiante.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Autores ────────────────────────────────────────
+    st.subheader("👥 Equipo de desarrollo")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:20px;border-radius:10px;text-align:center;'>
+        <strong>Eliezer Eduardo Chirinos Leal</strong><br><br>
+        <em>TSU en Informática</em><br>
+        Sección C5-1
+        <br><br>
+        <br>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+        <div style='background:rgba(255,255,255,0.05);padding:20px;border-radius:10px;text-align:center;'>
+        <strong>Tutora Académico</strong><br><br>
+        Ing. Agnaid Zabala<br><br>
+        <strong>Institución</strong><br>
+        READIC-UNIR<br>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ================================================================
 # LÓGICA PRINCIPAL DE LA APLICACIÓN
 # ================================================================
 
@@ -2938,6 +3143,9 @@ with st.sidebar:
         
         if st.button("ℹ️ Información sobre la plataforma", use_container_width=True):
             st.session_state.menu_estudiante = "Información"
+        
+        if st.button("📖 Acerca del proyecto", use_container_width=True):
+            st.session_state.menu_estudiante = "Acerca"
 
     elif rol_seleccionado == "Docente":
         st.subheader("👨‍🏫 Área de Docente")
@@ -2966,6 +3174,8 @@ with st.sidebar:
                 st.session_state.menu_docente = "Alertas inteligentes"
             if st.button("📁 Exportar datos", use_container_width=True):
                 st.session_state.menu_docente = "Exportar datos"
+            if st.button("📖 Acerca del proyecto", use_container_width=True):
+                st.session_state.menu_docente = "Acerca"
             if st.button("🚪 Cerrar sesión docente", use_container_width=True):
                 logout()
                 st.rerun()
@@ -2989,6 +3199,8 @@ with st.sidebar:
                 st.session_state.menu_psicologo = "Casos prioritarios"
             if st.button("📈 Dashboard histórico", use_container_width=True):
                 st.session_state.menu_psicologo = "Dashboard historico"
+            if st.button("📖 Acerca del proyecto", use_container_width=True):
+                st.session_state.menu_psicologo = "Acerca"
             if st.button("🚪 Cerrar sesión", use_container_width=True):
                 st.session_state.psicologo_activo = False
                 st.session_state.menu_psicologo = "Historial individual"
@@ -3342,7 +3554,10 @@ if rol_seleccionado == "Estudiante":
         **Para preguntas o soporte:** eliezer.05le4l@gmail.com
         """)
 
-# Área de Docente
+
+    elif st.session_state.menu_estudiante == "Acerca":
+        show_acerca()
+
 # Área de Docente
 elif rol_seleccionado == "Docente":
     if not st.session_state.get('docente_activo'):
@@ -3528,6 +3743,8 @@ elif rol_seleccionado == "Docente":
                 except Exception as e:
                     st.error(f"Error al generar Excel: {e}")
 
+        elif st.session_state.menu_docente == "Acerca":
+            show_acerca()
 # ================================================================
 # ÁREA DE PSICÓLOGO
 # ================================================================
@@ -3737,6 +3954,8 @@ elif rol_seleccionado == "Psicólogo":
         elif st.session_state.menu_psicologo == "Dashboard historico":
             show_dashboard_historico()
 
+        elif st.session_state.menu_psicologo == "Acerca":
+            show_acerca()
 # ================================================================
 # PIE DE PÁGINA
 # ================================================================
