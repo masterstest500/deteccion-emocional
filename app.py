@@ -2046,8 +2046,8 @@ def show_dashboard_historico():
         labels={"fecha": "Fecha", "puntaje_promedio": "Puntaje Promedio"},
         markers=True
     )
-    fig_puntaje.add_hline(y=3.0, line_dash="dash", line_color="red", annotation_text="Límite Riesgo Medio")
-    fig_puntaje.add_hline(y=4.2, line_dash="dash", line_color="darkred", annotation_text="Límite Riesgo Alto")
+    fig_puntaje.add_hline(y=0.65, line_dash="dash", line_color="red", annotation_text="Límite Riesgo Alto")
+    fig_puntaje.add_hline(y=0.40, line_dash="dash", line_color="orange", annotation_text="Límite Riesgo Medio")
     st.plotly_chart(fig_puntaje, use_container_width=True)
 
     st.caption("La línea muestra cómo ha evolucionado el riesgo promedio. Por encima de 0.65 es zona de alerta.")

@@ -175,7 +175,7 @@ def calcular_puntaje(nivel, respuestas, polarity, neg_count):
         nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
 
     # Asegurar que el puntaje no supere 1.0
-    puntaje = min(puntaje, 1.0)
+    puntaje = min(round(puntaje, 3), 1.0)
 
     if puntaje >= 0.65:
         riesgo = "Alto"
