@@ -433,14 +433,117 @@ def generate_dummy_data(clean_db=False):
     print("=" * 60)
 
 
+
+def generate_historia_crisis():
+    """
+    Genera un estudiante universitario con 3 evaluaciones que muestran
+    deterioro progresivo: Bajo → Medio → Alto
+    Ideal para mostrar el historial y las alertas en la demo.
+    """
+    print("\n📖 Generando historia de crisis progresiva...")
+    today = datetime.now()
+
+    # Crear el estudiante
+    uid = save_user("estudiante", 21, "Universidad")
+
+    evaluaciones = [
+        # Evaluación 1 — hace 14 días — BAJO RIESGO
+        {
+            "days_ago": 14,
+            "respuestas": {
+                "estres":2,"fatiga":2,"presion":2,"burnout":1,"suenio":2,"social":2,
+                "poms_tension":1,"poms_depresion":1,"poms_fatiga":2,"poms_vigor":4,
+                "valence_raw":7,"arousal_raw":5,
+                "nd_atencion":2,"nd_sensorial":1,"nd_inicio":2,"nd_olvidos":1,
+                "nd_rutinas":2,"nd_social":2,
+                "texto": "Me siento bien, el semestre arrancó tranquilo. Tengo energía y apoyo de mi familia."
+            }
+        },
+        # Evaluación 2 — hace 7 días — MEDIO RIESGO
+        {
+            "days_ago": 7,
+            "respuestas": {
+                "estres":4,"fatiga":3,"presion":4,"burnout":3,"suenio":4,"social":3,
+                "poms_tension":3,"poms_depresion":3,"poms_fatiga":3,"poms_vigor":3,
+                "valence_raw":4,"arousal_raw":5,
+                "nd_atencion":3,"nd_sensorial":2,"nd_inicio":3,"nd_olvidos":3,
+                "nd_rutinas":3,"nd_social":3,
+                "texto": "La carga aumentó bastante. Me cuesta dormir y siento que no me alcanza el tiempo. Trato de mantenerme pero está difícil."
+            }
+        },
+        # Evaluación 3 — hoy — ALTO RIESGO
+        {
+            "days_ago": 0,
+            "respuestas": {
+                "estres":5,"fatiga":5,"presion":5,"burnout":5,"suenio":5,"social":5,
+                "poms_tension":5,"poms_depresion":4,"poms_fatiga":5,"poms_vigor":1,
+                "valence_raw":2,"arousal_raw":7,
+                "nd_atencion":5,"nd_sensorial":4,"nd_inicio":5,"nd_olvidos":4,
+                "nd_rutinas":4,"nd_social":5,
+                "texto": "Ya no puedo más. Estoy agotado, ansioso y deprimido. No encuentro sentido a seguir. Me siento completamente solo y desesperado. Necesito ayuda urgente."
+            }
+        }
+    ]
+
+    for ev in evaluaciones:
+        fecha = today - timedelta(days=ev["days_ago"])
+        eid = save_survey(uid, ev["respuestas"], fecha)
+
+        texto = ev["respuestas"].get("texto", "")
+        polarity, subjectivity, neg_count = analyze_text_simple(texto)
+
+        puntaje, riesgo, valence_calc, arousal_calc, nd_score = calcular_puntaje(
+            "Universidad", ev["respuestas"], polarity, neg_count)
+
+        q = ev["respuestas"]
+        poms_answers = {
+            "nervioso": q.get("poms_tension",3), "tenso": q.get("poms_tension",3),
+            "estresado": q.get("poms_tension",3), "triste": q.get("poms_depresion",3),
+            "abatido": q.get("poms_depresion",3), "desanimado": q.get("poms_depresion",3),
+            "cansado": q.get("poms_fatiga",3), "agotado": q.get("poms_fatiga",3),
+            "somnoliento": q.get("poms_fatiga",3),
+            "activo": 6-q.get("poms_vigor",3), "energético": 6-q.get("poms_vigor",3),
+            "alerta": 6-q.get("poms_vigor",3)
+        }
+        poms_scores = score_poms(poms_answers)
+        perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
+
+        detalle = {
+            "Perfil": perfil,
+            "Polarity": polarity,
+            "Subj": subjectivity,
+            "NegWords": neg_count,
+            "TextoSnippet": texto[:100] + "..." if len(texto) > 100 else texto,
+            "Promedio": puntaje,
+            "Riesgo": riesgo,
+            "POMS": poms_scores,
+            "VA": {"valence": valence_calc, "arousal": arousal_calc},
+            "Neurodiv": {
+                "atencion": round(q.get("nd_atencion",3) / 5, 3),
+                "sensibilidad": round(q.get("nd_sensorial",3) / 5, 3),
+                "nd_score": round(nd_score, 3)
+            }
+        }
+
+        save_result(eid, riesgo, puntaje, detalle, fecha)
+        emoji = {"Alto":"🔴","Medio":"🟠","Bajo":"🟢"}.get(riesgo,"⚪")
+        print(f"  {emoji} Evaluación hace {ev['days_ago']:2} días | {riesgo:5} | {puntaje:.3f} | {perfil}")
+
+    print(f"  👤 Estudiante ID {uid} — historia de crisis lista")
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--clean', action='store_true', help='Limpiar BD antes de generar')
     parser.add_argument('--keep', action='store_true', help='Agregar a datos existentes')
+    parser.add_argument('--demo', action='store_true', help='Generar datos optimizados para demo 360')
     args = parser.parse_args()
 
-    if args.clean:
+    if args.demo:
+        generate_dummy_data(clean_db=True)
+        generate_historia_crisis()
+        print("\n✅ Datos de demo listos para el 360")
+    elif args.clean:
         generate_dummy_data(clean_db=True)
     elif args.keep:
         generate_dummy_data(clean_db=False)

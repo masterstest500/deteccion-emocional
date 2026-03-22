@@ -3096,8 +3096,19 @@ def show_acerca():
 # LÓGICA PRINCIPAL DE LA APLICACIÓN
 # ================================================================
 
-# Verificar parámetro URL para landing
+# Verificar parámetros URL
 qs = st.query_params
+
+# Modo demo: salta landing, loader y autenticación docente
+if qs.get("demo", "0") == "1":
+    st.session_state.landing_done = True
+    st.session_state.loader_shown = True
+    st.session_state.docente_activo = True
+    st.session_state.menu_docente = "Panel docente"
+    st.session_state.rol_seleccionado = "Docente"
+    st.query_params.clear()
+
+# Landing normal
 if qs.get("landing", ["0"])[0] == "1":
     st.session_state.landing_done = True
 
