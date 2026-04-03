@@ -184,6 +184,44 @@ st.markdown("""
         white-space: nowrap !important;
         pointer-events: none !important;
     }
+            
+    /* 🔥 FULLSCREEN REAL */
+    html, body, #root, .stApp {
+        height: 100% !important;
+        overflow: hidden !important;
+    }
+
+    /* 🔥 Eliminar padding interno */
+    .block-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+    }
+
+    /* 🔥 FIX adicional (MUY IMPORTANTE) */
+    section.main > div {
+        padding: 0 !important;
+    }
+
+    /* 🔥 IFRAME FULLSCREEN */
+    iframe {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        border: none !important;
+        z-index: 9999 !important;
+    }
+
+    /* Evitar scroll */
+    body {
+        overflow: hidden !important;
+    }
+    
+    * {
+    box-sizing: border-box;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -731,10 +769,11 @@ def show_landing_page(logo_base64):
         <head>
             <style>
             /* Estilos para la toma de control de pantalla completa (100vw, 100vh) */
-            body {{
+            html, body {{
                 margin: 0;
                 padding: 0;
                 overflow: hidden;
+                height: 100%
             }}
             .landing-container {{
                 position: fixed; 
@@ -758,7 +797,7 @@ def show_landing_page(logo_base64):
                 transition: all 0.5s ease;
             }}
             .logo-img {{
-                width: 230px;  /* CAMBIO 1: De 200px a 230px (15% más grande) */
+                width: clamp(140px, 18vw, 230px);
                 height: auto;
                 /* Efecto de brillo detrás */
                 filter: drop-shadow(0 0 20px rgba(79, 195, 247, 0.8)); 
@@ -774,14 +813,14 @@ def show_landing_page(logo_base64):
                 transform: scale(0.95);
             }}
             .title {{
-                font-size: 2.5rem;
+                font-size: clamp(1.8rem, 3vw, 2.5rem);
                 font-weight: 700;
                 margin-bottom: 1rem;
                 text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
                 animation: fadeInUp 1s ease-out;
             }}
             .subtitle {{
-                font-size: 1.2rem;
+                font-size: clamp(0.9rem, 1.2vw, 1.2rem);
                 margin-bottom: 3rem;
                 opacity: 0.9;
                 max-width: 600px;
@@ -877,9 +916,9 @@ def show_landing_page(logo_base64):
     
     # 4. Renderizar el IFRAME
     components.html(
-        html_content, 
-        height=700, 
-        scrolling=False 
+        html_content,
+        height=0,
+        scrolling=False
     )
 
     # 5. Botón de Transición Invisible (Activado por JS)
@@ -944,14 +983,15 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
   html,body {{
     height: 100%;
     margin: 0;
+    padding: 0;
     overflow: hidden;
   }}
   .loader-wrap {{
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    width: 100vw;
+    height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -965,7 +1005,7 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
     padding: 2rem;
   }}
   .logo-img {{
-    width: 150px;
+    width: clamp(140px, 18vw, 230px);
     height: auto;
     margin-bottom: 2rem;
     display: block;
@@ -975,7 +1015,7 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
     animation: logoPulse 2s ease-in-out infinite;
   }}
   .loader-text {{
-    font-size: 1.3rem;
+    font-size: clamp(1.8rem, 3vw, 2.5rem);
     color: white;
     margin-bottom: 2rem;
     font-weight: 500;
@@ -998,7 +1038,7 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
     transition: width 0.3s ease;
   }}
   .loader-subtext {{
-    font-size: 0.9rem;
+    font-size: clamp(0.9rem, 1.2vw, 1.2rem);
     color: rgba(255, 255, 255, 0.8);
     animation: fadeInUp 1s ease-out;
   }}
@@ -1056,7 +1096,11 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
 </body>
 </html>
 """
-    components.html(html, height=600, scrolling=False)
+    components.html(
+    html,
+    height=0,
+    scrolling=False
+)
 
 # ================================================================
 # FUNCIÓN DE LOGOUT
