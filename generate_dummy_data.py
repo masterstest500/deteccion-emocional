@@ -1,5 +1,4 @@
 # generate_dummy_data.py — Versión actualizada con lógica calibrada 0-1
-import sqlite3
 import json
 import random
 from datetime import datetime, timedelta
@@ -8,46 +7,13 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    from init_db import init_db, get_db_path
-    DB_PATH = get_db_path()
-except ImportError:
-    print("Error: No se pudo importar init_db.py")
-    sys.exit(1)
+from config import DB_PATH
+from database import init_db
+from db_queries import get_conn, save_result, save_survey, save_user
 
 # ================================================================
-# UTILIDADES DE BASE DE DATOS
+# UTILIDADES DE BASE DE DATOS (conexión centralizada en db_queries)
 # ================================================================
-
-def get_conn():
-    return sqlite3.connect(DB_PATH)
-
-def save_user(rol, edad, nivel):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("INSERT INTO usuarios (rol, edad, nivel) VALUES (?, ?, ?)", (rol, edad, nivel))
-    conn.commit()
-    uid = c.lastrowid
-    conn.close()
-    return uid
-
-def save_survey(uid, respuestas, fecha):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("INSERT INTO encuestas (usuario_id, respuestas, fecha) VALUES (?, ?, ?)",
-              (uid, json.dumps(respuestas, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
-    eid = c.lastrowid
-    conn.close()
-    return eid
-
-def save_result(eid, riesgo, puntaje, detalle, fecha):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("INSERT INTO resultados (encuesta_id, puntaje, riesgo, detalle, fecha) VALUES (?, ?, ?, ?, ?)",
-              (eid, puntaje, riesgo, json.dumps(detalle, ensure_ascii=False), fecha.strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
-    conn.close()
 
 # ================================================================
 # ANÁLISIS NLP VENEZOLANO (compatible con app.py)

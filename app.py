@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-import sqlite3
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,48 +13,49 @@ import typing as t
 import base64
 import random
 import time
+import charts 
 import streamlit.components.v1 as components
 import math
 import hashlib  # NEW: For password security
 from dotenv import load_dotenv
 load_dotenv()
 
-from database import save_user, save_survey, save_result
+from db_queries import (
+    fetch_alertas_riesgo_alto,
+    fetch_casos_prioritarios,
+    fetch_counts_resumen,
+    fetch_dashboard_historico,
+    fetch_dashboard_profesional,
+    fetch_excel_export_bundle,
+    fetch_historial_usuario,
+    fetch_pdf_resultados_por_usuario,
+    fetch_resultados_all,
+    fetch_resultados_clustering,
+    fetch_riesgo_counts_por_resultado,
+    fetch_table_all,
+    fetch_ultimas_sesiones_usuario_para_alertas,
+    fetch_usuarios_ids_ordered,
+    save_result,
+    save_survey,
+    save_user,
+)
+
+from config import (
+    AUDIO_FILE_PATH,
+    LOADER_SECONDS,
+    LOGO_PATH,
+    configure_page,
+    ensure_directories,
+    initialize_database,
+)
 
 # ================================================================
 # CONFIGURACIÓN GENERAL Y RUTAS DINÁMICAS (FASE 1)
 # ================================================================
 
-# 1. Configuración de página (Debe ser lo primero)
-st.set_page_config(
-    page_title="Plataforma de Detección Temprana", 
-    page_icon="💡", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# 2. Rutas dinámicas: Esto permite que el proyecto funcione en cualquier PC
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.join(BASE_DIR, "images")
-DATA_DIR = os.path.join(BASE_DIR, "data")
-
-# Crear carpetas si no existen
-for folder in [ASSETS_DIR, DATA_DIR]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-# 3. Importación de DB (Alineado con tus archivos externos)
-from init_db import get_db_path, init_db
-
-DB_PATH = get_db_path()
-# LOGO_PATH ahora es relativo, asegúrate de poner tu Logo.png en la carpeta 'assets'
-LOGO_PATH = os.path.join(BASE_DIR, "images", "Logo.png") 
-
-LOADER_SECONDS = 5
-AUDIO_FILE_PATH = "static/clic.wav"
-
-# Inicializar base de datos
-init_db()
+configure_page()
+ensure_directories()
+initialize_database()
 
 # ReportLab (opcional)
 try:
@@ -229,9 +229,6 @@ st.markdown("""
 # UTILIDADES GENERALES
 # ================================================================
 
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
 def img_to_base64(image_path):
     try:
         with open(image_path, "rb") as img_file:
@@ -246,14 +243,11 @@ def export_all_tables_zip_bytes():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
         for table in ["usuarios", "encuestas", "resultados"]:
-            conn = get_conn()
             try:
-                df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+                df = fetch_table_all(table)
                 z.writestr(f"{table}.csv", df.to_csv(index=False))
             except Exception:
                 z.writestr(f"{table}.csv", "/* Sin datos */")
-            finally:
-                conn.close()
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -1148,7 +1142,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     # ================================================================
     # 1. DEFINIR Y VALIDAR LOS DATOS DE UNA VEZ POR TODAS
     # ================================================================
-    # Inicializar diccionario vacío como fallback
     datos = {}
     
     # Procesar el parámetro que nos llega (puede ser None, string o dict)
@@ -1169,7 +1162,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     # ================================================================
     # 2. EXTRAER TODAS LAS MÉTRICAS CON VALORES POR DEFECTO
     # ================================================================
-    # Extraer con .get() para evitar KeyError si alguna clave falta
     valence = datos.get("VA", {}).get("valence", 0.0)
     arousal = datos.get("VA", {}).get("arousal", 0.5)
     polarity = datos.get("Polarity", 0.0)
@@ -1180,13 +1172,9 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     promedio = datos.get("Promedio", 0.0)
     texto_snippet = datos.get('TextoSnippet', '')
     
-    # El resto de tu código (200+ líneas) QUEDA EXACTAMENTE IGUAL...
-    # Porque ya usa 'riesgo', 'perfil', 'perfil_mapeado', etc.
-    
     # ================================================================
     # 3. CONFIGURACIÓN VISUAL PROFESIONAL
     # ================================================================
-    # Mapear nombres de perfiles para consistencia
     perfil_mapeado = {
         "Estrés": "Ansioso/Tenso",
         "Resiliente": "Resiliente",
@@ -1194,9 +1182,8 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         "Inestable emocional": "Inestable emocional",
         "Riesgo neuro-afectivo": "Riesgo neuro-afectivo",
         "Perfil mixto": "Perfil mixto"
-    }.get(perfil, perfil)  # Usar el original si no está en el mapa
+    }.get(perfil, perfil)
     
-    # Configurar colores y emojis según riesgo
     config_riesgo = {
         "Alto": {"color": "#ff4444", "emoji": "🔴", "color_name": "rojo"},
         "Medio": {"color": "#ffaa44", "emoji": "🟠", "color_name": "naranja"},
@@ -1205,7 +1192,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     
     riesgo_config = config_riesgo.get(riesgo, {"color": "#666666", "emoji": "⚪", "color_name": "gris"})
     
-    # Emojis por perfil emocional
     emojis_perfil = {
         "Resiliente": "🛡️",
         "Ansioso/Tenso": "😰", 
@@ -1226,93 +1212,37 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     """, unsafe_allow_html=True)
     
     st.markdown("---")
-    
-    # ================================================================
-    # 4b. GRÁFICO RADAR EMOCIONAL
-    # ================================================================
+
+    # AQUÍ ESTABA EL ERROR: Todo lo de abajo ahora tiene 4 espacios de sangría
     st.subheader("🎯 Perfil Emocional Visual")
-    
-    # Preparar valores para el radar (todos en escala 0-1)
-    tension_radar  = min(poms_tension, 1.0)
-    fatigue_radar  = min(poms_fatigue, 1.0)
-    estres_radar   = min(promedio, 1.0)
-    valence_radar  = (valence + 1) / 2  # convertir -1..1 a 0..1
-    arousal_radar  = min(arousal, 1.0)
 
-    categorias = ["Estrés", "Fatiga", "Tensión", "Activación", "Estado\nEmocional"]
-    valores    = [estres_radar, fatigue_radar, tension_radar, arousal_radar, valence_radar]
-    
-    # Cerrar el polígono
-    categorias_cierre = categorias + [categorias[0]]
-    valores_cierre    = valores + [valores[0]]
+    # Preparar valores
+    valores = [
+        min(promedio, 1.0),            # Estrés
+        min(poms_fatigue, 1.0),       # Fatiga
+        min(poms_tension, 1.0),       # Tensión
+        min(arousal, 1.0),            # Activación
+        (valence + 1) / 2             # Estado Emocional
+    ]
 
-    fig_radar_ind = go.Figure()
+    # Llamada a la nueva librería de gráficos
+    fig_radar, color_linea = charts.crear_radar_poms(valores, riesgo)
 
-    # Color según riesgo
-    color_relleno = {
-        "Alto":  "rgba(255,68,68,0.3)",
-        "Medio": "rgba(255,170,68,0.3)",
-        "Bajo":  "rgba(68,204,68,0.3)"
-    }.get(riesgo, "rgba(79,195,247,0.3)")
-
-    color_linea = {
-        "Alto":  "#ff4444",
-        "Medio": "#ffaa44",
-        "Bajo":  "#44cc44"
-    }.get(riesgo, "#4fc3f7")
-
-    fig_radar_ind.add_trace(go.Scatterpolar(
-        r=valores_cierre,
-        theta=categorias_cierre,
-        fill='toself',
-        fillcolor=color_relleno,
-        line=dict(color=color_linea, width=2),
-        name="Tu perfil"
-    ))
-
-    fig_radar_ind.update_layout(
-        polar=dict(
-            bgcolor="rgba(0,0,0,0)",
-            radialaxis=dict(
-                visible=True,
-                range=[0, 1],
-                gridcolor="rgba(255,255,255,0.15)",
-                linecolor="rgba(255,255,255,0.15)",
-                tickfont=dict(color="rgba(255,255,255,0.5)", size=9),
-                tickvals=[0.25, 0.5, 0.75, 1.0],
-                ticktext=["Leve", "Moderado", "Alto", "Máximo"]
-            ),
-            angularaxis=dict(
-                gridcolor="rgba(255,255,255,0.15)",
-                linecolor="rgba(255,255,255,0.15)",
-                tickfont=dict(color="rgba(255,255,255,0.9)", size=11)
-            )
-        ),
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        height=350,
-        margin=dict(t=30, b=30, l=60, r=60)
-    )
-
+    # Maquetado de Streamlit
     col_radar, col_legend = st.columns([2, 1])
     with col_radar:
-        st.plotly_chart(fig_radar_ind, use_container_width=True)
+        st.plotly_chart(fig_radar, use_container_width=True)
     with col_legend:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown(f"""
         <div style='padding:15px;border-radius:8px;background:rgba(255,255,255,0.05);'>
-        <p style='color:#aaaaaa;font-size:0.85em;margin:0 0 10px 0;'>
-        <strong>Cómo leer el radar:</strong></p>
-        <p style='color:#cccccc;font-size:0.82em;margin:0;'>
-        Cada eje representa una dimensión emocional.<br><br>
-        El área <span style='color:{color_linea};'>coloreada</span> muestra 
-        tu perfil actual.<br><br>
-        Un polígono más pequeño indica menor malestar emocional.
-        </p>
+            <p style='color:#aaaaaa;font-size:0.85em;margin:0 0 10px 0;'><strong>Cómo leer el radar:</strong></p>
+            <p style='color:#cccccc;font-size:0.82em;margin:0;'>
+                Área <span style='color:{color_linea};'>coloreada</span>: tu perfil.<br><br>
+                Polígono pequeño = menor malestar.
+            </p>
         </div>
         """, unsafe_allow_html=True)
-
-    st.markdown("---")
     # ================================================================
     # 5. ANÁLISIS PSICOLÓGICO PROFESIONAL
     # ================================================================
@@ -1728,21 +1658,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
 
 def generate_smart_alerts(user_id):
     """Genera alertas complejas analizando el historial del usuario."""
-    conn = get_conn()
-    
-    # 1. Obtener Historial (últimas 5 sesiones) - CONSULTA CORREGIDA
-    df = pd.read_sql_query(
-        f"""
-        SELECT r.puntaje, r.detalle, r.fecha 
-        FROM resultados r
-        JOIN encuestas e ON r.encuesta_id = e.id
-        WHERE e.usuario_id = '{user_id}' 
-        ORDER BY r.fecha DESC 
-        LIMIT 5
-        """, 
-        conn
-    )
-    conn.close()
+    df = fetch_ultimas_sesiones_usuario_para_alertas(user_id, limit=5)
 
     if df.shape[0] < 2:
         return ["🟢 Bajo riesgo: Se necesitan más sesiones para análisis de tendencia."]
@@ -1799,18 +1715,8 @@ def show_panel_docente():
     if not SKLEARN_AVAILABLE:
         st.error("🚨 La librería Scikit-learn (sklearn) no está instalada. Ejecuta: pip install scikit-learn")
         return
-        
-    conn = get_conn()
-    df = pd.read_sql_query(
-        """
-        SELECT r.id, r.puntaje, r.detalle, r.fecha, u.id as usuario_id, u.nivel 
-        FROM resultados r
-        JOIN encuestas e ON r.encuesta_id = e.id
-        JOIN usuarios u ON e.usuario_id = u.id
-        """, 
-        conn
-    )
-    conn.close()
+
+    df = fetch_resultados_clustering()
 
     if df.empty:
         st.info("No hay datos suficientes para realizar el clustering.")
@@ -1957,18 +1863,7 @@ def show_dashboard_historico():
     st.title("📈 Dashboard Emocional Histórico")
     st.markdown("Análisis de evolución temporal de los indicadores emocionales.")
     
-    # Obtener todos los datos históricos
-    conn = get_conn()
-    df = pd.read_sql_query("""
-        SELECT r.id, r.puntaje, r.riesgo, r.detalle, r.fecha, 
-               e.usuario_id, -- <--- ¡SE AÑADE ESTO!
-               e.respuestas, u.rol, u.edad, u.nivel as usuario_nivel
-        FROM resultados r
-        JOIN encuestas e ON r.encuesta_id = e.id
-        JOIN usuarios u ON e.usuario_id = u.id
-        ORDER BY r.fecha ASC
-    """, conn)
-    conn.close()
+    df = fetch_dashboard_historico()
     
     if df.empty:
         st.info("No hay datos históricos para mostrar.")
@@ -2250,27 +2145,12 @@ def show_dashboard_profesional():
     st.title("👨‍🏫 Dashboard de Bienestar General")
     st.markdown("Vista global y comparativa de los indicadores emocionales por grupo y nivel.")
 
-    conn = get_conn()
     try:
-        # CONSULTA CORREGIDA - nombres de columnas consistentes
-        df = pd.read_sql_query("""
-            SELECT 
-                r.id as resultado_id,
-                r.puntaje, 
-                r.riesgo,
-                r.detalle,
-                e.usuario_id,
-                u.nivel
-            FROM resultados r
-            JOIN encuestas e ON r.encuesta_id = e.id
-            JOIN usuarios u ON e.usuario_id = u.id
-        """, conn)
+        df = fetch_dashboard_profesional()
     except pd.io.sql.DatabaseError as e:
         st.error(f"Error al ejecutar consulta SQL para dashboard: {e}")
         st.info("Asegúrate de que las tablas existan y la base de datos esté inicializada.")
         return
-    finally:
-        conn.close()
 
     if df.empty:
         st.info("No hay datos cargados para generar el dashboard.")
@@ -2492,31 +2372,12 @@ def show_alertas_inteligentes():
     st.title("🚨 Alertas de Riesgo Temprano")
     st.write("Análisis focalizado en los casos que presentan mayor puntuación de riesgo combinado (Riesgo Alto).")
 
-    conn = get_conn()
     try:
-        # CONSULTA CORREGIDA - nombres de columnas actualizados
-        df = pd.read_sql_query("""
-            SELECT 
-                r.id as resultado_id,
-                r.puntaje, 
-                r.riesgo,
-                r.detalle,
-                e.fecha,
-                e.respuestas, 
-                u.id as usuario_id,
-                u.nivel
-            FROM resultados r
-            JOIN encuestas e ON r.encuesta_id = e.id
-            JOIN usuarios u ON e.usuario_id = u.id
-            WHERE r.riesgo = 'Alto'
-            ORDER BY r.puntaje DESC
-        """, conn)
+        df = fetch_alertas_riesgo_alto()
     except pd.io.sql.DatabaseError as e:
         st.error(f"Error al ejecutar consulta SQL para alertas: {e}")
         st.info("Asegúrate de que las tablas existan y la base de datos esté inicializada.")
         return
-    finally:
-        conn.close()
 
     if df.empty:
         st.success("No hay casos en riesgo alto. El bienestar general es satisfactorio. 🟢")
@@ -2662,31 +2523,12 @@ def generar_pdf_profesional_bytes(usuario_id=None):
     if not REPORTLAB_AVAILABLE:
         raise RuntimeError("ReportLab no disponible.")
 
-    # Obtener datos
-    conn = get_conn()
     if usuario_id:
-        # PDF individual
-        query = """
-            SELECT r.puntaje, r.riesgo, r.detalle, r.fecha, e.respuestas
-            FROM resultados r
-            JOIN encuestas e ON r.encuesta_id = e.id
-            WHERE e.usuario_id = ?
-            ORDER BY r.fecha DESC
-        """
-        df = pd.read_sql_query(query, conn, params=(usuario_id,))
+        df = fetch_pdf_resultados_por_usuario(usuario_id)
         titulo = f"Reporte Individual - Usuario {usuario_id}"
     else:
-        # PDF general
-        query = """
-            SELECT r.puntaje, r.riesgo, r.detalle, r.fecha, e.respuestas, u.nivel
-            FROM resultados r
-            JOIN encuestas e ON r.encuesta_id = e.id
-            JOIN usuarios u ON e.usuario_id = u.id
-        """
-        df = pd.read_sql_query(query, conn)
+        df = fetch_pdf_resultados_por_usuario(None)
         titulo = "Reporte General - Plataforma de Detección Emocional"
-    
-    conn.close()
 
     if df.empty:
         raise ValueError("No hay datos para generar el reporte")
@@ -2826,28 +2668,7 @@ def generar_excel_completo_bytes():
     - Valence-Arousal
     - Alertas y riesgos
     """
-    # Obtener todos los datos
-    conn = get_conn()
-    
-    # Datos de usuarios
-    df_usuarios = pd.read_sql_query("SELECT * FROM usuarios", conn)
-    
-    # Datos de encuestas con detalles
-    df_encuestas = pd.read_sql_query("""
-        SELECT e.*, u.rol, u.edad, u.nivel as usuario_nivel
-        FROM encuestas e
-        JOIN usuarios u ON e.usuario_id = u.id
-    """, conn)
-    
-    # Datos de resultados
-    df_resultados = pd.read_sql_query("""
-        SELECT r.*, e.respuestas, u.rol, u.edad, u.nivel as usuario_nivel
-        FROM resultados r
-        JOIN encuestas e ON r.encuesta_id = e.id
-        JOIN usuarios u ON e.usuario_id = u.id
-    """, conn)
-    
-    conn.close()
+    df_usuarios, df_encuestas, df_resultados = fetch_excel_export_bundle()
     
     if df_resultados.empty:
         raise ValueError("No hay datos para generar el reporte Excel")
@@ -3425,19 +3246,7 @@ if rol_seleccionado == "Estudiante":
                 st.session_state.consentimiento = False
                 st.rerun()
         else:
-            conn = get_conn()
-            df_hist = pd.read_sql_query(f"""
-                SELECT 
-                    r.fecha,
-                    r.puntaje,
-                    r.riesgo,
-                    r.detalle
-                FROM resultados r
-                JOIN encuestas e ON r.encuesta_id = e.id
-                WHERE e.usuario_id = {uid}
-                ORDER BY r.fecha DESC
-            """, conn)
-            conn.close()
+            df_hist = fetch_historial_usuario(uid, include_respuestas_y_nivel=False)
 
             if df_hist.empty:
                 st.info("Aún no tienes evaluaciones registradas.")
@@ -3625,12 +3434,8 @@ elif rol_seleccionado == "Docente":
             st.markdown("Bienvenido al panel de administración docente.")
             
             # ── Métricas generales ────────────────────────────
-            conn = get_conn()
             try:
-                total_usuarios = pd.read_sql_query("SELECT COUNT(*) as count FROM usuarios", conn).iloc[0]['count']
-                total_encuestas = pd.read_sql_query("SELECT COUNT(*) as count FROM encuestas", conn).iloc[0]['count']
-                total_resultados = pd.read_sql_query("SELECT COUNT(*) as count FROM resultados", conn).iloc[0]['count']
-                
+                total_usuarios, total_encuestas, total_resultados = fetch_counts_resumen()
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Total Usuarios", total_usuarios)
@@ -3638,28 +3443,17 @@ elif rol_seleccionado == "Docente":
                     st.metric("Total Encuestas", total_encuestas)
                 with col3:
                     st.metric("Total Resultados", total_resultados)
-                    
             except Exception as e:
                 st.error(f"Error al obtener estadísticas: {e}")
-            finally:
-                conn.close()
 
             # ── Semáforo de situación actual ──────────────────
             st.markdown("---")
             st.subheader("🚦 Situación General del Grupo")
 
-            conn2 = get_conn()
             try:
-                df_semaforo = pd.read_sql_query("""
-                    SELECT r.riesgo, COUNT(*) as cantidad
-                    FROM resultados r
-                    JOIN encuestas e ON r.encuesta_id = e.id
-                    GROUP BY r.riesgo
-                """, conn2)
+                df_semaforo = fetch_riesgo_counts_por_resultado()
             except Exception:
                 df_semaforo = pd.DataFrame()
-            finally:
-                conn2.close()
 
             total = int(df_semaforo["cantidad"].sum()) if not df_semaforo.empty else 0
             alto  = int(df_semaforo[df_semaforo["riesgo"] == "Alto"]["cantidad"].sum()) if not df_semaforo.empty else 0
@@ -3744,10 +3538,7 @@ elif rol_seleccionado == "Docente":
             
             with col1:
                 if st.button("📊 Exportar CSV General", use_container_width=True):
-                    conn = get_conn()
-                    df = pd.read_sql_query("SELECT * FROM resultados", conn)
-                    conn.close()
-                    
+                    df = fetch_resultados_all()
                     csv_bytes = df_to_csv_bytes(df)
                     st.download_button(
                         label="📥 Descargar CSV",
@@ -3813,12 +3604,7 @@ elif rol_seleccionado == "Psicólogo":
             st.title("👤 Historial Individual de Estudiante")
             st.markdown("Consulta el historial completo de cualquier estudiante por su ID.")
 
-            conn = get_conn()
-            try:
-                usuarios_disponibles = pd.read_sql_query(
-                    "SELECT DISTINCT id FROM usuarios ORDER BY id", conn)
-            finally:
-                conn.close()
+            usuarios_disponibles = fetch_usuarios_ids_ordered()
 
             if usuarios_disponibles.empty:
                 st.info("No hay estudiantes registrados aún.")
@@ -3826,25 +3612,7 @@ elif rol_seleccionado == "Psicólogo":
                 ids = usuarios_disponibles["id"].tolist()
                 uid_sel = st.selectbox("Seleccionar ID de estudiante:", ids)
 
-                conn = get_conn()
-                try:
-                    df_ind = pd.read_sql_query(f"""
-                        SELECT 
-                            r.fecha,
-                            r.puntaje,
-                            r.riesgo,
-                            r.detalle,
-                            e.respuestas,
-                            u.edad,
-                            u.nivel
-                        FROM resultados r
-                        JOIN encuestas e ON r.encuesta_id = e.id
-                        JOIN usuarios u ON e.usuario_id = u.id
-                        WHERE u.id = {uid_sel}
-                        ORDER BY r.fecha DESC
-                    """, conn)
-                finally:
-                    conn.close()
+                df_ind = fetch_historial_usuario(uid_sel, include_respuestas_y_nivel=True)
 
                 if df_ind.empty:
                     st.info("Este estudiante no tiene evaluaciones registradas.")
@@ -3953,26 +3721,7 @@ elif rol_seleccionado == "Psicólogo":
             st.title("🚨 Casos Prioritarios")
             st.markdown("Estudiantes con riesgo alto que requieren seguimiento clínico.")
 
-            conn = get_conn()
-            try:
-                df_prior = pd.read_sql_query("""
-                    SELECT 
-                        u.id as usuario_id,
-                        u.nivel,
-                        u.edad,
-                        r.puntaje,
-                        r.riesgo,
-                        r.detalle,
-                        r.fecha,
-                        e.respuestas
-                    FROM resultados r
-                    JOIN encuestas e ON r.encuesta_id = e.id
-                    JOIN usuarios u ON e.usuario_id = u.id
-                    WHERE r.riesgo = 'Alto'
-                    ORDER BY r.puntaje DESC
-                """, conn)
-            finally:
-                conn.close()
+            df_prior = fetch_casos_prioritarios()
 
             if df_prior.empty:
                 st.success("🟢 No hay casos en riesgo alto actualmente.")

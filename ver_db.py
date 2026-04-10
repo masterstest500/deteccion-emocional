@@ -3,15 +3,10 @@ import pandas as pd
 import os
 import sys
 
-# Añadir el directorio actual al path para importar init_db
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    from init_db import get_db_path
-    DB_PATH = get_db_path()
-except ImportError:
-    # Fallback si no puede importar
-    DB_PATH = os.path.join("data", "sistema.db")
+from config import DB_PATH
+from db_queries import get_conn
 
 print(f"🔍 Conectando a: {DB_PATH}")
 
@@ -21,8 +16,7 @@ if not os.path.exists(DB_PATH):
     sys.exit(1)
 
 try:
-    # Conectar a la base de datos
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     
     print("\n" + "="*60)
     print("📊 VISOR DE BASE DE DATOS - PLATAFORMA DE DETECCIÓN")
