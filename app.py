@@ -1003,7 +1003,7 @@ def show_landing_page(logo_base64):
                 <div class="logo-container" id="logoClickable">
                     <img class="logo-img" src="data:image/png;base64,{logo_base64}" alt="Logo Plataforma" onclick="handleLogoClick()">
                 </div>
-                <div class="title">Plataforma de Prevención Cognitiva y Emocional</div>
+                <div class="title">Plataforma Preventiva de Detección Emocional</div>
                 <div class="subtitle">Haz clic en el cerebro para iniciar la evaluación</div>
             </div>
             
