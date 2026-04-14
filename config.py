@@ -38,3 +38,19 @@ def initialize_database() -> None:
 
     ensure_directories()
     init_db()
+
+# ================================================================
+# RIESGO (UNIFICACIÓN VISUAL GLOBAL)
+# ================================================================
+
+RISK_LABELS = {
+    "bajo": "🟢 Bajo",
+    "medio": "🟡 Medio",
+    "alto": "🔴 Alto"
+}
+
+RISK_COLORS = {
+    "🟢 Bajo": "#2ecc71",
+    "🟡 Medio": "#f1c40f",
+    "🔴 Alto": "#e74c3c"
+}

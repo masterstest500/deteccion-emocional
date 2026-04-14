@@ -355,22 +355,30 @@ def generate_dummy_data(clean_db=False):
         perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
 
         detalle = {
-            "Perfil": perfil,
-            "Polarity": polarity,
-            "Subj": subjectivity,
-            "NegWords": neg_count,
-            "TextoSnippet": texto[:100] + "..." if len(texto) > 100 else texto,
-            "Promedio": puntaje,
-            "Riesgo": riesgo,
-            "POMS": poms_scores,
-            "VA": {"valence": valence_calc, "arousal": arousal_calc},
-            "Neurodiv": {
-                "atencion": round(u["respuestas"].get("nd_atencion", 3) / 5
-                    if isinstance(u["respuestas"].get("nd_atencion",3), int) else 0.5, 3),
-                "sensibilidad": round(u["respuestas"].get("nd_sensorial", 3) / 5
-                    if isinstance(u["respuestas"].get("nd_sensorial",3), int) else 0.5, 3),
-                "nd_score": round(nd_score, 3)
-            }
+            "resultado": {
+                "puntaje": puntaje,
+                "riesgo": riesgo,
+                "perfil": perfil
+            },
+
+            "emocional": {
+                "polarity": polarity,
+                "subjectivity": subjectivity,
+                "neg_words": neg_count
+            },
+
+            "va": {
+                "valence": valence_calc,
+                "arousal": arousal_calc
+            },
+
+            "poms": poms_scores,
+
+            "neurodiv": {
+                "nd_score": nd_score
+            },
+
+            "texto": texto
         }
 
         save_result(eid, riesgo, puntaje, detalle, fecha)
@@ -398,6 +406,186 @@ def generate_dummy_data(clean_db=False):
         print(f"   {nv}: {n}")
     print("=" * 60)
 
+
+def generate_dataset_v3(clean_db=True):
+
+    import random
+    from datetime import datetime, timedelta
+
+    if clean_db and os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+
+    init_db()
+
+    def ruido(v, amp=0.08):
+        return max(0, min(1, v + random.uniform(-amp, amp)))
+
+    estudiantes = []
+
+    # ======================================================
+    # 🔴 ALTO RIESGO (con evolución)
+    # ======================================================
+    for i in range(4):
+        base = {
+            "nivel": random.choice(["Universidad", "Secundaria"]),
+            "edad": random.randint(15, 23),
+        }
+
+        for step in range(3):
+            dias = 14 - step * 7
+
+            perfil = "Ansioso/Tenso"
+
+            respuestas = {
+                "estres": min(5, 4 + step),
+                "fatiga": min(5, 4 + step),
+                "presion": min(5, 4 + step),
+                "burnout": min(5, 3 + step),
+                "suenio": min(5, 4 + step),
+                "social": min(5, 3 + step),
+
+                "poms_tension": min(5, 4 + step),
+                "poms_depresion": min(5, 3 + step),
+                "poms_fatiga": min(5, 4 + step),
+                "poms_vigor": max(1, 3 - step),
+
+                "valence_raw": ruido(0.2, 0.25),
+                "arousal_raw": ruido(0.8, 0.25),
+
+                "texto": random.choice([
+                    "me siento agotado, sin energía y muy estresado",
+                    "no puedo más, todo me supera",
+                    "estoy muy cansado mentalmente"
+                ])
+            }
+
+            estudiantes.append((base, respuestas, dias, perfil))
+
+    # ======================================================
+    # 🟡 MEDIO RIESGO (inestables)
+    # ======================================================
+    for i in range(4):
+        base = {
+            "nivel": random.choice(["Universidad", "Secundaria", "Primaria"]),
+            "edad": random.randint(9, 22),
+        }
+
+        for step in range(3):
+            dias = 12 - step * 5
+
+            perfil = "Inestable emocional"
+
+            respuestas = {
+                "estres": 3 + random.randint(-1, 1),
+                "fatiga": 3 + random.randint(-1, 1),
+                "presion": 3 + random.randint(-1, 1),
+                "burnout": 3 + random.randint(-1, 1),
+                "suenio": 3 + random.randint(-1, 1),
+                "social": 3 + random.randint(-1, 1),
+
+                "poms_tension": 3 + random.randint(-1, 1),
+                "poms_depresion": 3 + random.randint(-1, 1),
+                "poms_fatiga": 3 + random.randint(-1, 1),
+                "poms_vigor": 3 + random.randint(-1, 1),
+
+                "valence_raw": ruido(0.5, 0.25),
+                "arousal_raw": ruido(0.5, 0.25),
+
+                "texto": random.choice([
+                    "a veces estoy bien, a veces no",
+                    "me siento variable emocionalmente",
+                    "depende del día"
+                ])
+            }
+
+            estudiantes.append((base, respuestas, dias, perfil))
+
+    # ======================================================
+    # 🟢 BAJO RIESGO (estables)
+    # ======================================================
+    for i in range(4):
+        base = {
+            "nivel": random.choice(["Universidad", "Secundaria", "Primaria"]),
+            "edad": random.randint(8, 23),
+        }
+
+        for step in range(3):
+            dias = 10 - step * 4
+
+            perfil = "Resiliente"
+
+            respuestas = {
+                "estres": max(1, 2 - random.randint(0, 1)),
+                "fatiga": max(1, 2 - random.randint(0, 1)),
+                "presion": max(1, 2 - random.randint(0, 1)),
+                "burnout": max(1, 2 - random.randint(0, 1)),
+                "suenio": max(1, 2 - random.randint(0, 1)),
+                "social": max(1, 2 - random.randint(0, 1)),
+
+                "poms_tension": max(1, 2 - random.randint(0, 1)),
+                "poms_depresion": max(1, 2 - random.randint(0, 1)),
+                "poms_fatigue": max(1, 2 - random.randint(0, 1)),
+                "poms_vigor": min(5, 4 + random.randint(0, 1)),
+
+                "valence_raw": ruido(0.8, 0.2),
+                "arousal_raw": ruido(0.3, 0.2),
+
+                "texto": random.choice([
+                    "me siento bien y tranquilo",
+                    "todo está estable",
+                    "me siento motivado y en paz"
+                ])
+            }
+
+            estudiantes.append((base, respuestas, dias, perfil))
+
+    # ======================================================
+    # 🔁 INSERTAR EN BD
+    # ======================================================
+    for base, resp, dias, perfil in estudiantes:
+
+        uid = save_user("estudiante", base["edad"], base["nivel"])
+        fecha = datetime.now() - timedelta(days=dias)
+        eid = save_survey(uid, resp, fecha)
+
+        texto = resp.get("texto", "")
+        polarity, subjectivity, neg_count = analyze_text_simple(texto)
+
+        puntaje, riesgo, valence_calc, arousal_calc, nd_score = calcular_puntaje(
+            base["nivel"], resp, polarity, neg_count
+        )
+
+        poms_scores = {}
+        if base["nivel"] == "Universidad":
+            poms_scores = {
+                "tension": resp.get("poms_tension", 3),
+                "fatigue": resp.get("poms_fatigue", 3),
+                "vigor": resp.get("poms_vigor", 3)
+            }
+
+        detalle = {
+            "resultado": {
+                "puntaje": puntaje,
+                "riesgo": riesgo,
+                "perfil": perfil
+            },
+            "emocional": {
+                "polarity": polarity,
+                "subjectivity": subjectivity,
+                "neg_words": neg_count
+            },
+            "VA": {
+                "valence": valence_calc,
+                "arousal": arousal_calc
+            },
+            "POMS": poms_scores,
+            "Neurodiv": {
+                "nd_score": nd_score
+            },
+            "texto": texto
+        }
+
+        save_result(eid, riesgo, puntaje, detalle, fecha)
 
 
 def generate_historia_crisis():
@@ -475,20 +663,30 @@ def generate_historia_crisis():
         perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
 
         detalle = {
-            "Perfil": perfil,
-            "Polarity": polarity,
-            "Subj": subjectivity,
-            "NegWords": neg_count,
-            "TextoSnippet": texto[:100] + "..." if len(texto) > 100 else texto,
-            "Promedio": puntaje,
-            "Riesgo": riesgo,
-            "POMS": poms_scores,
-            "VA": {"valence": valence_calc, "arousal": arousal_calc},
-            "Neurodiv": {
-                "atencion": round(q.get("nd_atencion",3) / 5, 3),
-                "sensibilidad": round(q.get("nd_sensorial",3) / 5, 3),
-                "nd_score": round(nd_score, 3)
-            }
+            "resultado": {
+                "puntaje": puntaje,
+                "riesgo": riesgo,
+                "perfil": perfil
+            },
+
+            "emocional": {
+                "polarity": polarity,
+                "subjectivity": subjectivity,
+                "neg_words": neg_count
+            },
+
+            "va": {
+                "valence": valence_calc,
+                "arousal": arousal_calc
+            },
+
+            "poms": poms_scores,
+
+            "neurodiv": {
+                "nd_score": nd_score
+            },
+
+            "texto": texto
         }
 
         save_result(eid, riesgo, puntaje, detalle, fecha)

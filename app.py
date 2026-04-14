@@ -7,6 +7,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from config import RISK_LABELS, RISK_COLORS
+from utils import apply_riesgo_labels
 import io
 import zipfile
 import typing as t
@@ -74,6 +79,88 @@ try:
 except ImportError:
     SKLEARN_AVAILABLE = False
 
+
+# ================================================================
+# ROUTER CENTRAL (NUEVO - FASE 1)
+# ================================================================
+
+def init_router_state():
+    if "route" not in st.session_state:
+        st.session_state.route = {
+            "rol": "Estudiante",
+            "page": None,
+            "subpage": None,
+        }
+
+def set_route(page, subpage=None):
+    st.session_state.route["page"] = page
+    st.session_state.route["subpage"] = subpage
+
+def get_route():
+    return st.session_state.route
+
+
+def router():
+    route = get_route()
+    rol = route["rol"]
+    page = route["page"]
+
+    if rol == "Estudiante":
+        estudiante_router(page)
+
+    elif rol == "Docente":
+        docente_router(page)
+
+    elif rol == "Psicólogo":
+        psicologo_router(page)
+
+    
+# ================================================================
+# SUB-ROUTERS (ADAPTADOS A TU LÓGICA ACTUAL)
+# ================================================================
+
+def estudiante_router(page):
+    if page == "registro":
+        st.session_state.menu_estudiante = "Registrar encuesta"
+    elif page == "historial":
+        st.session_state.menu_estudiante = "Ver historial"
+    elif page == "resultados":
+        st.session_state.menu_estudiante = "Resultados"
+    elif page == "info":
+        st.session_state.menu_estudiante = "Información"
+    elif page == "acerca":
+        st.session_state.menu_estudiante = "Acerca"
+
+
+def docente_router(page):
+    if page == "panel":
+        st.session_state.menu_docente = "Panel docente"
+    elif page == "clustering":
+        st.session_state.menu_docente = "Clustering"
+    elif page == "dashboard_hist":
+        st.session_state.menu_docente = "Dashboard histórico"
+    elif page == "dashboard_prof":
+        st.session_state.menu_docente = "Dashboard profesional"
+    elif page == "alertas":
+        st.session_state.menu_docente = "Alertas inteligentes"
+    elif page == "export":
+        st.session_state.menu_docente = "Exportar datos"
+    elif page == "acerca":
+        st.session_state.menu_docente = "Acerca"
+
+
+def psicologo_router(page):
+    if page == "historial":
+        st.session_state.menu_psicologo = "Historial individual"
+    elif page == "casos":
+        st.session_state.menu_psicologo = "Casos prioritarios"
+    elif page == "dashboard":
+        st.session_state.menu_psicologo = "Dashboard historico"
+    elif page == "acerca":
+        st.session_state.menu_psicologo = "Acerca"
+
+
+
 # ================================================================
 # INICIALIZACIÓN DE ESTADOS DE SESIÓN (SIN CAMBIOS)
 # ================================================================
@@ -102,6 +189,37 @@ if "menu_docente" not in st.session_state:
     st.session_state.menu_docente = "Panel docente"
 if "logo_clicked" not in st.session_state:
     st.session_state.logo_clicked = False
+
+
+init_router_state()
+# Estado inicial seguro
+if "menu_estudiante" not in st.session_state:
+    st.session_state.menu_estudiante = "Información"
+
+if "menu_docente" not in st.session_state:
+    st.session_state.menu_docente = "Panel docente"
+
+if "menu_psicologo" not in st.session_state:
+    st.session_state.menu_psicologo = "Historial individual"
+
+router()
+
+def router():
+    route = get_route()
+    rol = route["rol"]
+    page = route["page"]
+
+    if page is None:
+        return  # 🔥 evita errores al iniciar
+
+    if rol == "Estudiante":
+        estudiante_router(page)
+
+    elif rol == "Docente":
+        docente_router(page)
+
+    elif rol == "Psicólogo":
+        psicologo_router(page)
 
 # ================================================================
 # CSS PARA OCULTAR ELEMENTOS NO DESEADOS DE STREAMLIT
@@ -551,20 +669,39 @@ def get_questions_by_level(nivel: str):
 
 def render_questions_by_level(questions):
     respuestas = {}
+
+    preguntas_normales = []
+    pregunta_texto = None
+
+    # Separar preguntas
     for q in questions:
+        if q["tipo"] == "texto":
+            pregunta_texto = q
+        else:
+            preguntas_normales.append(q)
+
+    # 1. Renderizar preguntas normales primero
+    for q in preguntas_normales:
+
         if q["tipo"] == "likert":
             respuestas[q["id"]] = st.slider(q["texto"], 1, 5, 3)
 
         elif q["tipo"] == "carita":
-            respuestas[q["id"]] = st.select_slider(q["texto"],
-                                                   options=q["opciones"],
-                                                   value=q["opciones"][2])
-
-        elif q["tipo"] == "texto":
-            respuestas[q["id"]] = st.text_area(q["texto"], height=100)
+            respuestas[q["id"]] = st.select_slider(
+                q["texto"],
+                options=q["opciones"],
+                value=q["opciones"][2]
+            )
 
         elif q["tipo"] == "likert_9":
             respuestas[q["id"]] = st.slider(q["texto"], 1, 9, 5)
+
+    # 2. TEXTO SIEMPRE AL FINAL
+    if pregunta_texto:
+        respuestas[pregunta_texto["id"]] = st.text_area(
+            pregunta_texto["texto"],
+            height=120
+        )
 
     return respuestas
 
@@ -1703,6 +1840,59 @@ def generate_smart_alerts(user_id):
 
     return alerts
 
+
+# ================================================================
+# INSIGHTS IA 
+# ================================================================
+def generar_insights_clusters(cluster_summary):
+    insights = []
+
+    for _, row in cluster_summary.iterrows():
+        cluster = int(row["cluster"])
+        puntaje = row.get("puntaje", 0)
+        tension = row.get("tension", 0)
+        fatigue = row.get("fatigue", 0)
+        valence = row.get("valence", 0)
+
+        # 🔴 ALTO RIESGO
+        if puntaje > 4:
+            insights.append(
+                f"🔴 Grupo {cluster}: presenta un nivel de riesgo elevado, con señales consistentes de malestar emocional. Se recomienda atención prioritaria."
+            )
+
+        # 🟡 RIESGO MEDIO
+        elif puntaje > 3:
+            insights.append(
+                f"🟡 Grupo {cluster}: muestra indicadores moderados de riesgo. Se sugiere seguimiento para prevenir un posible deterioro."
+            )
+
+        # 🟢 BAJO RIESGO
+        else:
+            insights.append(
+                f"🟢 Grupo {cluster}: mantiene un estado emocional estable en general."
+            )
+
+        # 🔥 DETALLES ADICIONALES (solo si aportan valor)
+
+        if tension > 0.6:
+            insights.append(
+                f"   • Se detectan niveles elevados de tensión, lo que puede indicar estrés sostenido."
+            )
+
+        if fatigue > 0.7:
+            insights.append(
+                f"   • Hay signos de fatiga significativa, posible sobrecarga emocional o agotamiento."
+            )
+
+        if valence < 0:
+            insights.append(
+                f"   • El estado emocional tiende a ser negativo, lo que sugiere bajo bienestar percibido."
+            )
+
+    return insights
+
+
+
 # ================================================================
 # PANEL DOCENTE - CLUSTERING DE RIESGO
 # ================================================================
@@ -1723,29 +1913,173 @@ def show_panel_docente():
         return
 
     # 1. Preparación de datos (usando la encuesta más reciente por usuario)
-    df["detalle_json"] = df["detalle"].apply(safe_json_load)
-    
-    # Extraer variables clave para el clustering
-    df["tension"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("tension", 0))
-    df["fatigue"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("fatigue", 0))
-    df["valence"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
-    df["arousal"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
-    df["palabras_negativas"] = df["detalle_json"].apply(lambda x: x.get("NegWords", 0))
 
-    # Conservar solo el resultado más reciente de cada usuario para el clustering
+    df["data"] = df["detalle"].apply(safe_json_load)
+
+    df["tension"] = df["data"].apply(lambda x: (x or {}).get("poms", {}).get("tension", 0))
+    df["fatigue"] = df["data"].apply(lambda x: (x or {}).get("poms", {}).get("fatigue", 0))
+    df["valence"] = df["data"].apply(lambda x: (x or {}).get("va", {}).get("valence", 0))
+    df["arousal"] = df["data"].apply(lambda x: (x or {}).get("va", {}).get("arousal", 0))
+
+    # FIX REAL: simplificado (tu versión era redundante)
+    df["palabras_negativas"] = df["data"].apply(
+        lambda x: (x or {}).get("emocional", {}).get("neg_words", 0)
+    )
+
+    # FILTRO GLOBAL (ANTES DE TODO)
+    df = df.dropna(subset=["valence", "arousal", "palabras_negativas"])
+
+    # FIX REAL: evitar strings o NaN ocultos
+    df["valence"] = pd.to_numeric(df["valence"], errors="coerce")
+    df["arousal"] = pd.to_numeric(df["arousal"], errors="coerce")
+    df["palabras_negativas"] = pd.to_numeric(df["palabras_negativas"], errors="coerce")
+
+    df = df.dropna(subset=["valence", "arousal", "palabras_negativas"])
+
     df_latest = df.sort_values(by='fecha', ascending=False).drop_duplicates(subset=['usuario_id'])
-    
-    if len(df_latest) < 3:
-        st.warning("Se necesitan al menos 3 usuarios distintos para realizar un clustering significativo.")
+
+    # 🔥 ASEGURAR QUE EXISTEN (FIX REAL)
+    df_universidad = df_latest[df_latest["nivel"] == "Universidad"].copy()
+    df_otros = df_latest[df_latest["nivel"] != "Universidad"].copy()
+
+    # ========================
+    # CLUSTERING UNIVERSIDAD (CON POMS)
+    # ========================
+    features_uni = ['puntaje', 'tension', 'fatigue', 'valence', 'arousal', 'palabras_negativas']
+   
+
+    # 🔥 FIX: copy() para evitar SettingWithCopyWarning
+    X_uni = df_universidad[features_uni].fillna(0).copy()
+
+    # 🔥 FIX: asegurar tipos numéricos reales
+    X_uni = X_uni.apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    # 🔥 PROTECCIÓN: evitar clusters basura
+    if X_uni.var().sum() == 0 or len(X_uni) < 2:
+        st.warning("Datos insuficientes o constantes en Universidad → clustering no significativo")
+        df_universidad["cluster"] = -1
+    else:
+
+        feature_weights = {
+            "puntaje": 2.0,
+            "tension": 1.5,
+            "fatigue": 1.5,
+            "valence": 2.0,
+            "arousal": 2.0,
+            "palabras_negativas": 1.2
+        }
+
+        # 🔥 FIX: evitar modificar view original
+        X_uni_weighted = X_uni.copy()
+        for col, w in feature_weights.items():
+            if col in X_uni_weighted.columns:
+                X_uni_weighted[col] = X_uni_weighted[col] * w
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_uni_weighted)
+
+        # 🔥 FIX REAL: K seguro
+        k = min(3, len(X_uni_weighted))
+        
+        if k < 2:
+            df_universidad["cluster"] = -1
+        else:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            df_universidad["cluster"] = kmeans.fit_predict(X_scaled)
+
+
+    # ========================
+    # CLUSTERING OTROS (SIN POMS)
+    # ========================
+    features_base = ['puntaje', 'valence', 'arousal', 'palabras_negativas']
+
+    # 🔥 FIX: copy + tipos
+    X_base = df_otros[features_base].fillna(0).copy()
+    X_base = X_base.apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    if X_base.var().sum() == 0 or len(X_base) < 2:
+        st.warning("Datos insuficientes o constantes en niveles básicos → clustering no significativo")
+        df_otros["cluster"] = -1
+    else:
+
+        X_base_weighted = X_base.copy()
+
+        for col, w in {
+            "puntaje": 2.0,
+            "valence": 2.0,
+            "arousal": 2.0,
+            "palabras_negativas": 1.2
+        }.items():
+            if col in X_base_weighted.columns:
+                X_base_weighted[col] = X_base_weighted[col] * w
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_base_weighted)
+
+        # 🔥 FIX REAL: K seguro
+        k = min(3, len(X_base_weighted))
+
+        if k < 2:
+            df_otros["cluster"] = -1
+        else:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            df_otros["cluster"] = kmeans.fit_predict(X_scaled)
+
+
+    # ========================
+    # UNIR RESULTADOS
+    # ========================
+
+    df_final = pd.concat([df_universidad, df_otros], ignore_index=True)
+
+    # 🔥 MAPEO CLUSTER → RIESGO REAL
+    CLUSTER_TO_RISK = {
+        0: "bajo",
+        1: "medio",
+        2: "alto"
+    }
+
+    df_final["riesgo"] = df_final["cluster"].map(CLUSTER_TO_RISK)
+    df_final = apply_riesgo_labels(df_final)
+
+    # ========================
+    # 🔥 INTERPRETACIÓN REAL DE CLUSTERS
+    # ========================
+
+    # 1. Calcular riesgo promedio por cluster
+    cluster_risk = df_final.groupby("cluster")["puntaje"].mean().sort_values()
+
+    # 2. Ordenar clusters de menor → mayor riesgo
+    ordered_clusters = cluster_risk.index.tolist()
+
+    # 3. Asignar etiquetas REALES
+    labels_ordered = [
+        "🟢 Estables",
+        "🟡 Vulnerables",
+        "🔴 Críticos"
+    ]
+
+    cluster_labels = {
+        cluster_id: labels_ordered[i]
+        for i, cluster_id in enumerate(ordered_clusters)
+    }
+
+    # 4. Aplicar etiquetas
+    df_final["cluster_name"] = df_final["cluster"].map(cluster_labels)
+
+    df_final = df_final[df_final["cluster"] != -1].copy()
+
+    # 🔥 FIX: protección real
+    if df_final.empty:
+        st.warning("No hay datos suficientes después del clustering")
         return
 
-    # Definir features para el clustering (las variables de riesgo)
-    features = ['puntaje', 'tension', 'fatigue', 'valence', 'arousal', 'palabras_negativas']
-    X = df_latest[features].fillna(0) # Reemplazar NaN, aunque no debería haber
+    # DEBUG (opcional)
+    st.write("Total registros:", len(df_latest))
+    st.write("Universidad:", len(df_universidad))
+    st.write("Otros:", len(df_otros))
 
-    # 2. Estandarización
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+
 
     # 3. Configuración del Clustering
     st.sidebar.subheader("⚙️ Configuración de Clustering")
@@ -1753,26 +2087,40 @@ def show_panel_docente():
     # Selector de número de clusters (grupos de riesgo)
     num_clusters = st.sidebar.slider("Número de Grupos (K):", min_value=2, max_value=6, value=3)
 
-    # 4. Aplicar K-Means
-    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init='auto')
-    df_latest['cluster'] = kmeans.fit_predict(X_scaled)
-
     st.subheader(f"Grupos de Riesgo (K={num_clusters})")
 
     # 5. Visualización (Reducción de dimensionalidad con PCA para Plotly)
+    features_all = ['puntaje', 'valence', 'arousal', 'palabras_negativas']
+
+    X_vis = df_final[features_all].fillna(0)
+
+    if len(X_vis) < 2:
+        st.warning("No hay suficientes datos para visualización PCA.")
+        return
+
     pca = PCA(n_components=2)
-    components = pca.fit_transform(X_scaled)
-    pca_df = pd.DataFrame(data = components, columns = ['PCA Componente 1', 'PCA Componente 2'])
-    pca_df['cluster'] = df_latest['cluster'].values
-    pca_df['usuario_id'] = df_latest['usuario_id'].values
-    pca_df['puntaje'] = df_latest['puntaje'].values
+
+    X_vis_scaled = StandardScaler().fit_transform(X_vis)
+    components = pca.fit_transform(X_vis_scaled)
+
+    pca_df = pd.DataFrame(components, columns=['PCA Componente 1', 'PCA Componente 2'])
+    pca_df['cluster'] = df_final['cluster'].values
+    pca_df['usuario_id'] = df_final['usuario_id'].values
+    pca_df['puntaje'] = df_final['puntaje'].values
+
+    pca_df = pca_df.merge(
+        df_final[["usuario_id", "riesgo_label"]],
+        on="usuario_id",
+        how="left"
+    )
     
     # Scatter plot de Clustering (PCA)
     fig_pca = px.scatter(
         pca_df, 
         x='PCA Componente 1', 
         y='PCA Componente 2', 
-        color=pca_df['cluster'].astype(str),
+        color="riesgo_label",
+        color_discrete_map=RISK_COLORS,
         hover_data={'usuario_id': True, 'puntaje': ':.2f', 'cluster': True},
         title="Visualización de Clústeres de Riesgo (Reducción de Dimensionalidad PCA)"
     )
@@ -1783,29 +2131,29 @@ def show_panel_docente():
     
     try:
         # 6.1 Calcular estadísticas básicas por cluster (solo features)
-        cluster_stats = df_latest.groupby('cluster')[features].agg({
-            'puntaje': 'mean',
-            'tension': 'mean', 
-            'fatigue': 'mean',
-            'valence': 'mean',
-            'arousal': 'mean',
-            'palabras_negativas': 'mean'
-        }).reset_index()
+        cluster_stats = df_final.groupby('cluster')[[
+            'puntaje',
+            'tension',
+            'fatigue',
+            'valence',
+            'arousal',
+            'palabras_negativas'
+        ]].mean().reset_index()
         
         # 6.2 Calcular nivel más frecuente por cluster (separadamente)
-        nivel_por_cluster = df_latest.groupby('cluster')['nivel'].agg(
+        nivel_por_cluster = df_final.groupby('cluster')['nivel'].agg(
             lambda x: x.mode()[0] if not x.mode().empty else 'N/A'
         ).reset_index(name='nivel_mas_frecuente')
         
         # 6.3 Contar miembros por cluster (usando usuario_id correctamente)
-        miembros_por_cluster = df_latest.groupby('cluster')['usuario_id'].count().reset_index(name='total_miembros')
+        miembros_por_cluster = df_final.groupby('cluster')['usuario_id'].count().reset_index(name='total_miembros')
         
         # 6.4 Combinar todas las estadísticas
         cluster_summary = pd.merge(cluster_stats, nivel_por_cluster, on='cluster')
         cluster_summary = pd.merge(cluster_summary, miembros_por_cluster, on='cluster')
         
         # 6.5 Formatear números para mejor visualización
-        for col in features:
+        for col in ['puntaje', 'tension', 'fatigue', 'valence', 'arousal', 'palabras_negativas']:
             if col in cluster_summary.columns:
                 cluster_summary[col] = cluster_summary[col].round(3)
         
@@ -1846,6 +2194,19 @@ def show_panel_docente():
             - **fatigue > 0.7** sugiere agotamiento importante
             - **valence negativo** indica estado de ánimo displacentero
             """)
+
+            # ========================
+            # 7. INSIGHTS AUTOMÁTICOS
+            # ========================
+            st.subheader("🧠 Insights Automáticos")
+
+            insights = generar_insights_clusters(cluster_summary)
+
+            if insights:
+                for i in insights:
+                    st.markdown(f"- {i}")
+            else:
+                st.info("No se detectaron patrones relevantes.")
             
     except Exception as e:
         st.error(f"❌ Error al calcular estadísticas de clusters: {str(e)}")
@@ -1952,6 +2313,12 @@ def show_dashboard_historico():
     
     if df.empty:
         st.warning("No hay datos en el rango seleccionado.")
+        return
+    
+
+    if len(df) < 2:
+        st.scatter_chart(df, x="fecha", y="puntaje")
+        st.caption("📌 Estado actual del estudiante")
         return
     
     # ===== EVOLUCIÓN GENERAL (Se añade el nombre del usuario al título) =====
@@ -2147,6 +2514,7 @@ def show_dashboard_profesional():
 
     try:
         df = fetch_dashboard_profesional()
+        df = apply_riesgo_labels(df)
     except pd.io.sql.DatabaseError as e:
         st.error(f"Error al ejecutar consulta SQL para dashboard: {e}")
         st.info("Asegúrate de que las tablas existan y la base de datos esté inicializada.")
@@ -2160,7 +2528,7 @@ def show_dashboard_profesional():
     df["detalle_json"] = df["detalle"].apply(safe_json_load)
     
     # Extraer perfil emocional
-    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("Perfil", "No definido"))
+    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("resultado", {}).get("perfil", "No definido"))
     
     # Extracción de métricas
     df["valence"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
@@ -2201,14 +2569,15 @@ def show_dashboard_profesional():
         riesgo_counts.columns = ['riesgo', 'count']
         
         # Mapa de colores para Riesgo
-        color_map = {'Alto': 'red', 'Medio': 'gold', 'Bajo': 'green'}
-        riesgo_counts['color'] = riesgo_counts['riesgo'].map(color_map).fillna('gray')
+        riesgo_counts["riesgo_label"] = riesgo_counts["riesgo"].map(RISK_LABELS)
         
         fig_riesgo = px.pie(
-            riesgo_counts, values='count', names='riesgo',
+            riesgo_counts,
+            values='count',
+            names='riesgo_label',
             title='¿Cuántos estudiantes están en cada nivel de riesgo?',
-            color='riesgo',
-            color_discrete_map=color_map
+            color='riesgo_label',
+            color_discrete_map=RISK_COLORS
         )
         fig_riesgo.update_traces(textinfo='percent+label', marker=dict(line=dict(color='#000000', width=1)))
         st.plotly_chart(fig_riesgo, use_container_width=True)
@@ -2260,10 +2629,10 @@ def show_dashboard_profesional():
     with col3:
         fig_va = px.scatter(
             df, x="valence", y="arousal",
-            color="riesgo",
+            color="riesgo_label",
+            color_discrete_map=RISK_COLORS,
             hover_data=["perfil", "usuario_id"],
             title="Mapa emocional del grupo: ¿cómo se sienten y qué tanta energía tienen?",
-            color_discrete_map=color_map,
             range_x=[-1.1, 1.1],
             range_y=[-0.1, 1.1]
         )
@@ -2374,6 +2743,7 @@ def show_alertas_inteligentes():
 
     try:
         df = fetch_alertas_riesgo_alto()
+        df = apply_riesgo_labels(df)
     except pd.io.sql.DatabaseError as e:
         st.error(f"Error al ejecutar consulta SQL para alertas: {e}")
         st.info("Asegúrate de que las tablas existan y la base de datos esté inicializada.")
@@ -2418,7 +2788,7 @@ def show_alertas_inteligentes():
     st.markdown(f"**{len(df)}** casos detectados en **Riesgo Alto** que requieren atención inmediata.")
 
     # Tabla de resumen de los casos en riesgo alto
-    st.dataframe(df[["resultado_id", "usuario_id", "nivel", "puntaje", "Causa Principal", "fecha"]].rename(
+    st.dataframe(df[["resultado_id", "usuario_id", "nivel", "puntaje", "Causa Principal", "fecha", "riesgo_label"]].rename(
         columns={
             "resultado_id": "ID Resultado", 
             "usuario_id": "Usuario ID", 
@@ -3005,62 +3375,77 @@ with st.sidebar:
         ["Estudiante", "Docente", "Psicólogo"],
         key="rol_seleccionado"
     )
+
+    # 🔥 NUEVO: sincronizar con router
+    st.session_state.route["rol"] = rol_seleccionado
     
     # Navegación para Estudiante
     if rol_seleccionado == "Estudiante":
         st.subheader("👤 Área de Estudiante")
         
-        if st.button("📝 Registrar nueva encuesta", use_container_width=True):
-            st.session_state.menu_estudiante = "Registrar encuesta"
-            st.session_state.consentimiento = False
+        if st.button("📝 Registrar nueva encuesta"):
+            set_route("registro")
+            st.rerun()
         
         if st.button("📊 Ver mi historial", use_container_width=True):
-            st.session_state.menu_estudiante = "Ver historial"
+            set_route("historial")
+            st.rerun()
         
         if st.button("ℹ️ Información sobre la plataforma", use_container_width=True):
-            st.session_state.menu_estudiante = "Información"
+            set_route("info")
+            st.rerun()
         
         if st.button("📖 Acerca del proyecto", use_container_width=True):
-            st.session_state.menu_estudiante = "Acerca"
+            set_route("acerca")
+            st.rerun()
 
     elif rol_seleccionado == "Docente":
         st.subheader("👨‍🏫 Área de Docente")
-        
+
         if not st.session_state.get('docente_activo'):
             clave = st.text_input("🔑 Clave de acceso docente:", type="password")
             if st.button("🔓 Acceder como docente", use_container_width=True):
                 if clave == os.getenv("CLAVE_DOCENTE", "admin123"):
                     st.session_state.docente_activo = True
-                    st.session_state.clave_docente = clave
                     st.success("Acceso concedido")
                     st.rerun()
                 else:
                     st.error("Clave incorrecta")
-        
-        if st.session_state.get('docente_activo'):
+
+        else:
             if st.button("📈 Panel docente general", use_container_width=True):
-                st.session_state.menu_docente = "Panel docente"
+                set_route("panel")
+                st.rerun()
+
             if st.button("🧠 Clustering de riesgo", use_container_width=True):
-                st.session_state.menu_docente = "Clustering"
+                set_route("clustering")
+                st.rerun()
+
             if st.button("📊 Dashboard histórico", use_container_width=True):
-                st.session_state.menu_docente = "Dashboard histórico"
+                set_route("dashboard_hist")
+                st.rerun()
+
             if st.button("👨‍🏫 Dashboard profesional", use_container_width=True):
-                st.session_state.menu_docente = "Dashboard profesional"
+                set_route("dashboard_prof")
+                st.rerun()
+
             if st.button("🚨 Alertas inteligentes", use_container_width=True):
-                st.session_state.menu_docente = "Alertas inteligentes"
+                set_route("alertas")
+                st.rerun()
+
             if st.button("📁 Exportar datos", use_container_width=True):
-                st.session_state.menu_docente = "Exportar datos"
+                set_route("export")
+                st.rerun()
+
             if st.button("📖 Acerca del proyecto", use_container_width=True):
-                st.session_state.menu_docente = "Acerca"
-            if st.button("🚪 Cerrar sesión docente", use_container_width=True):
-                logout()
+                set_route("acerca")
                 st.rerun()
 
     elif rol_seleccionado == "Psicólogo":
         st.subheader("🧠 Área de Psicólogo")
 
         if not st.session_state.get('psicologo_activo'):
-            clave_p = st.text_input("🔑 Clave de acceso:", type="password", key="input_clave_psico")
+            clave_p = st.text_input("🔑 Clave de acceso:", type="password")
             if st.button("🔓 Acceder como psicólogo", use_container_width=True):
                 if clave_p == os.getenv("CLAVE_PSICOLOGO", "psico123"):
                     st.session_state.psicologo_activo = True
@@ -3068,19 +3453,128 @@ with st.sidebar:
                 else:
                     st.error("Clave incorrecta")
 
-        if st.session_state.get('psicologo_activo'):
+        else:
             if st.button("👤 Historial individual", use_container_width=True):
-                st.session_state.menu_psicologo = "Historial individual"
-            if st.button("🚨 Casos prioritarios", use_container_width=True):
-                st.session_state.menu_psicologo = "Casos prioritarios"
-            if st.button("📈 Dashboard histórico", use_container_width=True):
-                st.session_state.menu_psicologo = "Dashboard historico"
-            if st.button("📖 Acerca del proyecto", use_container_width=True):
-                st.session_state.menu_psicologo = "Acerca"
-            if st.button("🚪 Cerrar sesión", use_container_width=True):
-                st.session_state.psicologo_activo = False
-                st.session_state.menu_psicologo = "Historial individual"
+                set_route("historial")
                 st.rerun()
+
+            if st.button("🚨 Casos prioritarios", use_container_width=True):
+                set_route("casos")
+                st.rerun()
+
+            if st.button("📈 Dashboard histórico", use_container_width=True):
+                set_route("dashboard")
+                st.rerun()
+
+            if st.button("📖 Acerca del proyecto", use_container_width=True):
+                set_route("acerca")
+                st.rerun()
+
+
+# ================================================================
+# SERVICIO PRINCIPAL DE PROCESAMIENTO DE ENCUESTA
+# ================================================================
+def process_survey_service(nivel, edad, respuestas):
+    # 1. NLP
+    texto = respuestas.get("texto", "")
+    polarity, subjectivity, neg_count = analyze_text_advanced(texto)
+
+    # 2. Procesamiento principal
+    puntaje, riesgo, valence, arousal, nd_score = process_results_by_level(
+        nivel, respuestas, (polarity, subjectivity, neg_count)
+    )
+
+    # 3. POMS si aplica
+    poms_scores = {
+        "tension": 0,
+        "fatigue": 0,
+        "vigor": 0
+    }
+    if nivel == "Universidad":
+        poms_respuestas = {
+            "tension": respuestas.get("poms_tension", 3),
+            "depresion": respuestas.get("poms_depresion", 3),
+            "fatiga": respuestas.get("poms_fatiga", 3),
+            "vigor": respuestas.get("poms_vigor", 3),
+        }
+        poms_scores = score_poms(poms_respuestas)
+
+    # 4. Perfil
+    perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
+
+    # 5. detalle
+    detalle = {
+    "meta": {
+        "nivel": nivel,
+        "edad": edad
+    },
+
+    "resultado": {
+        "puntaje": puntaje,
+        "riesgo": riesgo,
+        "perfil": perfil
+    },
+
+    "emocional": {
+        "polarity": polarity,
+        "subjectivity": subjectivity,
+        "neg_words": neg_count
+    },
+
+    "va": {
+        "valence": valence,
+        "arousal": arousal
+    },
+
+    "poms": poms_scores,
+
+    "neurodiv": {
+        "nd_score": nd_score
+    },
+
+    "texto": texto
+   }
+
+    # 6. DATA CONTRACT (PRIMERO)
+    result = {
+        "uid": None,  # temporal
+        "nivel": nivel,
+        "edad": edad,
+
+        "riesgo": riesgo,
+        "puntaje": puntaje,
+        "perfil": perfil,
+
+        "emocional": {
+            "polarity": polarity,
+            "subjectivity": subjectivity,
+            "neg_words": neg_count
+        },
+
+        "va": {
+            "valence": valence,
+            "arousal": arousal
+        },
+
+        "cognitivo": {
+            "nd_score": nd_score
+        },
+
+        "poms": poms_scores,
+
+        "texto": texto[:100]
+    }
+
+    # 7. DB
+    uid = save_user("estudiante", edad, nivel)
+    eid = save_survey(uid, respuestas)
+
+    result["uid"] = uid   # 🔥 IMPORTANTE
+
+    save_result(eid, riesgo, puntaje, detalle)
+
+    return result
+
 
 # ================================================================
 # CONTENIDO PRINCIPAL SEGÚN SELECCIÓN
@@ -3157,80 +3651,28 @@ if rol_seleccionado == "Estudiante":
                 submitted = st.form_submit_button("📤 Enviar encuesta", use_container_width=True)
                 
                 if submitted:
-                    with st.spinner("Analizando respuestas..."):
-                        # Análisis del texto
-                        texto = respuestas.get("texto", "")
-                        polarity, subjectivity, neg_count = analyze_text_advanced(texto)
-                        
-                        # Procesar resultados según nivel
-                        puntaje, riesgo, valence_calc, arousal_calc, nd_score = process_results_by_level(nivel, respuestas, (polarity, subjectivity, neg_count))
-                        
-                        # Calcular POMS si es nivel Universidad
-                        poms_scores = {}
-                        if nivel == "Universidad":
-                            # Extraer respuestas POMS
-                            poms_respuestas = {
-                                "nervioso": respuestas.get("poms_tension", 3),
-                                "tenso": respuestas.get("poms_tension", 3),
-                                "estresado": respuestas.get("poms_tension", 3),
-                                "triste": respuestas.get("poms_depresion", 3),
-                                "abatido": respuestas.get("poms_depresion", 3),
-                                "desanimado": respuestas.get("poms_depresion", 3),
-                                "cansado": respuestas.get("poms_fatiga", 3),
-                                "agotado": respuestas.get("poms_fatiga", 3),
-                                "somnoliento": respuestas.get("poms_fatiga", 3),
-                                "activo": 6 - respuestas.get("poms_vigor", 3),
-                                "energético": 6 - respuestas.get("poms_vigor", 3),
-                                "alerta": 6 - respuestas.get("poms_vigor", 3)
-                            }
-                            poms_scores = score_poms(poms_respuestas)
-                        
-                        # Clasificar perfil
-                        perfil = classify_profile(puntaje, polarity, subjectivity, poms_scores, neg_count)
-                        
-                        # Crear detalle completo
-                        detalle = {
-                            "Perfil": perfil,
-                            "Polarity": polarity,
-                            "Subj": subjectivity,
-                            "NegWords": neg_count,
-                            "TextoSnippet": texto[:100] + "..." if len(texto) > 100 else texto,
-                            "Promedio": puntaje,
-                            "Riesgo": riesgo,
-                            "POMS": poms_scores,
-                            "VA": {"valence": valence_calc, "arousal": arousal_calc},
-                            "Neurodiv": {
-                                "atencion": round(respuestas.get("nd_atencion", 3) / 5 if isinstance(respuestas.get("nd_atencion", 3), int) else 0.5, 3),
-                                "sensibilidad": round(respuestas.get("nd_sensorial", 3) / 5 if isinstance(respuestas.get("nd_sensorial", 3), int) else 0.5, 3),
-                                "nd_score": round(nd_score, 3)
-                            }
-                        }
-                        
-                        # Guardar en base de datos
-                        try:
-                            # Guardar usuario
-                            uid = save_user("estudiante", edad, nivel)
+                    try:
+                        with st.spinner("Analizando respuestas..."):
+                            result = process_survey_service(nivel, edad, respuestas)
+                            st.write("DEBUG result:", result)
+
+                        # SOLO si existe result
+                        if not result:
+                            st.error("Error: resultado vacío")
+                            st.stop()
+
+                        st.session_state.last_report_data = result
+                        st.session_state.uid = result.get("uid")
+
+                        set_route("resultados")
+
+                        st.success("✅ Encuesta enviada correctamente")
+                        st.balloons()
+                        st.stop()
+
+                    except Exception as e:
+                        st.error(f"Error al guardar los datos: {str(e)}")     
                             
-                            # Guardar encuesta
-                            eid = save_survey(uid, respuestas)
-                            
-                            # Guardar resultado
-                            save_result(eid, riesgo, puntaje, detalle)
-                            
-                            # ================================================================
-                            # 🎯 REDIRECCIÓN AL BLOQUE DE RESULTADOS (SOLUCIÓN A DUPLICACIÓN)
-                            # ================================================================
-                            st.session_state.last_report_data = {
-                                "riesgo": riesgo, "perfil": perfil, "detalle": detalle, "uid": uid
-                            }
-                            st.session_state.uid = uid  
-                            st.session_state.menu_estudiante = "Resultados"
-                            st.success("✅ Encuesta enviada correctamente")
-                            st.balloons()
-                            st.rerun() # Forzar el cambio de página
-                            
-                        except Exception as e:
-                            st.error(f"Error al guardar los datos: {str(e)}")
         
     
     elif st.session_state.menu_estudiante == "Ver historial":
@@ -3256,14 +3698,18 @@ if rol_seleccionado == "Estudiante":
                     st.rerun()
             else:
                 # Procesar datos
-                df_hist["detalle_json"] = df_hist["detalle"].apply(safe_json_load)
-                df_hist["Perfil"] = df_hist["detalle_json"].apply(
-                    lambda x: x.get("Perfil", "No definido"))
-                df_hist["Valence"] = df_hist["detalle_json"].apply(
-                    lambda x: x.get("VA", {}).get("valence", 0))
-                df_hist["Arousal"] = df_hist["detalle_json"].apply(
-                    lambda x: x.get("VA", {}).get("arousal", 0.5))
-                df_hist["fecha_dt"] = pd.to_datetime(df_hist["fecha"])
+                df_hist["data"] = df_hist["detalle"].apply(safe_json_load)
+
+                df_hist["fecha_dt"] = pd.to_datetime(df_hist["fecha"], errors="coerce")
+                df_hist = df_hist.dropna(subset=["fecha_dt"])
+
+                df_hist["puntaje"] = df_hist["data"].apply(lambda x: x.get("resultado", {}).get("puntaje"))
+                df_hist["perfil"] = df_hist["data"].apply(lambda x: x.get("resultado", {}).get("perfil"))
+                df_hist["riesgo"] = df_hist["data"].apply(lambda x: x.get("resultado", {}).get("riesgo"))
+                df_hist["emocional"] = df_hist["data"].apply(lambda x: x.get("emocional", {}))
+                df_hist["va"] = df_hist["data"].apply(lambda x: x.get("va", {}))
+                df_hist["cognitivo"] = df_hist["data"].apply(lambda x: x.get("cognitivo", {}))
+                df_hist["poms"] = df_hist["data"].apply(lambda x: x.get("poms", {}))
 
                 # ── Métricas resumen ──────────────────────────────
                 st.subheader("📈 Resumen")
@@ -3272,7 +3718,11 @@ if rol_seleccionado == "Estudiante":
                     st.metric("Total evaluaciones", len(df_hist))
                 with col2:
                     ultimo_riesgo = df_hist["riesgo"].iloc[0]
-                    color_map = {"Alto": "🔴", "Medio": "🟠", "Bajo": "🟢"}
+                    color_map = {
+                        "🟢 Bajo": RISK_COLORS["🟢 Bajo"],
+                        "🟡 Medio": RISK_COLORS["🟡 Medio"],
+                        "🔴 Alto": RISK_COLORS["🔴 Alto"]
+                    }
                     st.metric("Último riesgo", 
                     f"{color_map.get(ultimo_riesgo, '⚪')} {ultimo_riesgo}")
                 with col3:
@@ -3312,20 +3762,20 @@ if rol_seleccionado == "Estudiante":
 
                 # ── Tabla de historial ────────────────────────────
                 st.subheader("📋 Detalle de Evaluaciones")
-                df_tabla = df_hist[["fecha", "puntaje", "riesgo", "Perfil"]].copy()
+                df_tabla = df_hist[["fecha", "puntaje", "riesgo", "perfil"]].copy()
                 df_tabla.columns = ["Fecha", "Puntaje", "Riesgo", "Perfil"]
                 df_tabla["Puntaje"] = df_tabla["Puntaje"].round(3)
 
                 def color_riesgo(val):
                     colores = {
-                        "Alto": "background-color: rgba(255,68,68,0.2)",
-                        "Medio": "background-color: rgba(255,170,68,0.2)",
-                        "Bajo": "background-color: rgba(68,204,68,0.2)"
+                        "🟢 Bajo": "background-color: rgba(46,204,113,0.2)",
+                        "🟡 Medio": "background-color: rgba(241,196,15,0.2)",
+                        "🔴 Alto": "background-color: rgba(231,76,60,0.2)"
                     }
                     return colores.get(val, "")
 
                 st.dataframe(
-                    df_tabla.style.applymap(color_riesgo, subset=["Riesgo"]),
+                    df_tabla.style.applymap(color_riesgo, subset=["riesgo_label"]),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -3614,20 +4064,26 @@ elif rol_seleccionado == "Psicólogo":
 
                 df_ind = fetch_historial_usuario(uid_sel, include_respuestas_y_nivel=True)
 
+                df_ind["fecha_dt"] = pd.to_datetime(df_ind["fecha"], errors="coerce")
+
                 if df_ind.empty:
                     st.info("Este estudiante no tiene evaluaciones registradas.")
                 else:
-                    df_ind["detalle_json"]    = df_ind["detalle"].apply(safe_json_load)
+                    df_ind["data"] = df_ind["detalle"].apply(safe_json_load)
+
                     df_ind["respuestas_json"] = df_ind["respuestas"].apply(safe_json_load)
-                    df_ind["fecha_dt"]        = pd.to_datetime(df_ind["fecha"])
-                    df_ind["perfil"]          = df_ind["detalle_json"].apply(lambda x: x.get("Perfil", "N/A"))
-                    df_ind["texto_libre"]     = df_ind["respuestas_json"].apply(lambda x: x.get("texto", ""))
-                    df_ind["poms_tension"]    = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("tension", 0))
-                    df_ind["poms_fatigue"]    = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("fatigue", 0))
-                    df_ind["poms_vigor"]      = df_ind["detalle_json"].apply(lambda x: x.get("POMS", {}).get("vigor", 0))
-                    df_ind["valence"]         = df_ind["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
-                    df_ind["arousal"]         = df_ind["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
-                    df_ind["nd_score"]        = df_ind["detalle_json"].apply(lambda x: x.get("Neurodiv", {}).get("nd_score", 0.5))
+
+                    df_ind["texto_libre"] = df_ind["respuestas_json"].apply(
+                        lambda x: x.get("texto", "")
+                    )
+
+
+                    df_ind["perfil"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("perfil") or x.get("Perfil", "N/A"))
+                    df_ind["riesgo"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("riesgo"))
+                    df_ind["puntaje"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("puntaje"))
+
+                    df_ind["poms"] = df_ind["data"].apply(lambda x: x.get("poms", {}))
+                    
 
                     # ── Resumen del estudiante ──────────────────
                     st.subheader("📋 Resumen del Estudiante")
@@ -3665,16 +4121,30 @@ elif rol_seleccionado == "Psicólogo":
                     st.subheader("🧠 Evolución de Estados Afectivos (POMS)")
                     fig_poms = go.Figure()
                     df_sorted = df_ind.sort_values("fecha_dt")
-                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_tension"],
-                        name="Tensión", line=dict(color="red", width=2)))
-                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_fatigue"],
-                        name="Fatiga", line=dict(color="orange", width=2)))
-                    fig_poms.add_trace(go.Scatter(x=df_sorted["fecha_dt"], y=df_sorted["poms_vigor"],
-                        name="Vigor", line=dict(color="green", width=2)))
+                    fig_poms.add_trace(go.Scatter(
+                        x=df_sorted["fecha_dt"],
+                        y=df_sorted["poms"].apply(lambda x: x.get("tension", 0)),
+                        name="Tensión",
+                        line=dict(color="red", width=2)
+                    ))
+                    fig_poms.add_trace(go.Scatter(
+                        x=df_sorted["fecha_dt"],
+                        y=df_sorted["poms"].apply(lambda x: x.get("fatigue", 0)),
+                        name="Fatiga",
+                        line=dict(color="orange", width=2)
+                    ))
+                    fig_poms.add_trace(go.Scatter(
+                        x=df_sorted["fecha_dt"],
+                        y=df_sorted["poms"].apply(lambda x: x.get("vigor", 0)),
+                        name="Vigor",
+                        line=dict(color="green", width=2)
+                    ))
                     fig_poms.update_layout(
-                        xaxis_title="Fecha", yaxis_title="Intensidad (0-1)",
+                        xaxis_title="Fecha",
+                        yaxis_title="Intensidad (0-1)",
                         hovermode="x unified",
-                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)"
                     )
                     st.plotly_chart(fig_poms, use_container_width=True)
 
@@ -3685,15 +4155,25 @@ elif rol_seleccionado == "Psicólogo":
                     st.caption("⚠️ Información sensible — uso exclusivo del psicólogo orientador.")
                     for _, row in df_ind.iterrows():
                         texto = row["texto_libre"]
+
                         if texto and texto.strip():
-                            with st.expander(f"Sesión: {row['fecha']} — Riesgo: {row['riesgo']}"):
+                            with st.expander(f"Sesión: {row['fecha']} — Riesgo: {row.get('riesgo', 'N/A')}"):
                                 st.markdown(f"""
                                 <div style='background:#1a1a2e;padding:15px;border-radius:8px;
                                 border-left:4px solid #4fc3f7;color:#e0e0e0;font-style:italic;'>
                                 "{texto}"
                                 </div>
                                 """, unsafe_allow_html=True)
-                                st.caption(f"Perfil: {row['perfil']} | Puntaje: {row['puntaje']:.3f}")
+
+                                puntaje = row.get("puntaje")
+                                perfil = row.get("perfil", "N/A")
+
+                                if puntaje is not None:
+                                    puntaje_str = f"{puntaje:.3f}"
+                                else:
+                                    puntaje_str = "N/A"
+
+                                st.caption(f"Perfil: {perfil} | Puntaje: {puntaje_str}")
 
                     st.markdown("---")
 
