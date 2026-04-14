@@ -1269,7 +1269,7 @@ def md_to_html(text: str) -> str:
     return text
 
 # ================================================================
-# FUNCIÓN AUXILIAR DE REPORTE INDIVIDUAL
+# FUNCIÓN AUXILIAR DE REPORTE INDIVIDUAL (SHOW SINGLE REPORT)
 # ================================================================
 
 def show_single_report(riesgo, perfil, detalle_param =None):
@@ -1299,15 +1299,15 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     # ================================================================
     # 2. EXTRAER TODAS LAS MÉTRICAS CON VALORES POR DEFECTO
     # ================================================================
-    valence = datos.get("VA", {}).get("valence", 0.0)
-    arousal = datos.get("VA", {}).get("arousal", 0.5)
-    polarity = datos.get("Polarity", 0.0)
-    subjectivity = datos.get("Subj", 0.0)
-    neg_words = datos.get("NegWords", 0)
+    valence = datos.get("va", {}).get("valence", 0.0)
+    arousal = datos.get("va", {}).get("arousal", 0.5)
+    polarity = datos.get("emocional", {}).get("polarity", 0.0)
+    subjectivity = datos.get("emocional", {}).get("subjectivity", 0.0)
+    neg_words = datos.get("emocional", {}).get("neg_words", 0)
     poms_tension = datos.get("POMS", {}).get("tension", 0.0)
     poms_fatigue = datos.get("POMS", {}).get("fatigue", 0.0)
-    promedio = datos.get("Promedio", 0.0)
-    texto_snippet = datos.get('TextoSnippet', '')
+    promedio = datos.get("resultado", {}).get("puntaje", 0.0)
+    texto_snippet = datos.get("texto", "")
     
     # ================================================================
     # 3. CONFIGURACIÓN VISUAL PROFESIONAL
@@ -1326,9 +1326,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         "Medio": {"color": "#ffaa44", "emoji": "🟠", "color_name": "naranja"},
         "Bajo": {"color": "#44cc44", "emoji": "🟢", "color_name": "verde"}
     }
-    
-    riesgo_config = config_riesgo.get(riesgo, {"color": "#666666", "emoji": "⚪", "color_name": "gris"})
-    
+
     emojis_perfil = {
         "Resiliente": "🛡️",
         "Ansioso/Tenso": "😰", 
@@ -1343,8 +1341,24 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     # ================================================================
     # 4. ENCABEZADO DEL REPORTE
     # ================================================================
+        # NORMALIZAR RIESGO (ESTO ES LA CAUSA DEL BUG VISUAL)
+    riesgo_normalizado = (
+        riesgo.lower() if isinstance(riesgo, str)
+        else "medio"
+    )
+
+    if "alto" in riesgo_normalizado:
+        riesgo_key = "Alto"
+    elif "medio" in riesgo_normalizado:
+        riesgo_key = "Medio"
+    else:
+        riesgo_key = "Bajo"
+
+    riesgo_config = config_riesgo.get(riesgo_key, {"color": "#666666", "emoji": "⚪", "color_name": "gris"})
+
+
     st.markdown(f"""
-    ### {riesgo_config['emoji']} **Nivel de Riesgo:** <span style='color:{riesgo_config['color']}; font-weight:bold;'>{riesgo.upper()}</span>
+    ### {riesgo_config['emoji']} **Nivel de Riesgo:** <span style='color:{riesgo_config['color']}; font-weight:bold;'>{riesgo_key.upper()}</span>
     ### {emoji_perfil} **Perfil Emocional:** {perfil_mapeado}
     """, unsafe_allow_html=True)
     
@@ -1354,16 +1368,19 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     st.subheader("🎯 Perfil Emocional Visual")
 
     # Preparar valores
+    def clamp(v):
+        return max(v, 0.01)
+
     valores = [
-        min(promedio, 1.0),            # Estrés
-        min(poms_fatigue, 1.0),       # Fatiga
-        min(poms_tension, 1.0),       # Tensión
-        min(arousal, 1.0),            # Activación
-        (valence + 1) / 2             # Estado Emocional
+        clamp(min(promedio, 1.0)),
+        clamp(min(poms_fatigue, 1.0)),
+        clamp(min(poms_tension, 1.0)),
+        clamp(min(arousal, 1.0)),
+        clamp((valence + 1) / 2)
     ]
 
     # Llamada a la nueva librería de gráficos
-    fig_radar, color_linea = charts.crear_radar_poms(valores, riesgo)
+    fig_radar, color_linea = charts.crear_radar_poms(valores, riesgo_key)
 
     # Maquetado de Streamlit
     col_radar, col_legend = st.columns([2, 1])
@@ -2743,7 +2760,10 @@ def show_alertas_inteligentes():
 
     try:
         df = fetch_alertas_riesgo_alto()
-        df = apply_riesgo_labels(df)
+
+        if "riesgo_label" not in df.columns:
+            df = apply_riesgo_labels(df)
+
     except pd.io.sql.DatabaseError as e:
         st.error(f"Error al ejecutar consulta SQL para alertas: {e}")
         st.info("Asegúrate de que las tablas existan y la base de datos esté inicializada.")
@@ -2758,17 +2778,17 @@ def show_alertas_inteligentes():
     df["respuestas_json"] = df["respuestas"].apply(safe_json_load)
     
     # Extraer perfil del JSON
-    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("Perfil", "No definido"))
-    
+    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("resultado", {}).get("perfil", "No definido"))    
+
     # Extraer el texto libre de la encuesta para contextualizar la alerta
     df["texto"] = df["respuestas_json"].apply(lambda x: x.get("texto", ""))
     
     # Lógica de clasificación de la Causa Principal
     causas = []
     for d in df["detalle_json"]:
-        prom = d.get("Promedio", 0)
-        neg = d.get("NegWords", 0)
-        subj = d.get("Subj", 0)
+        prom = float(d.get("resultado", {}).get("puntaje", 0))
+        neg = d.get("emocional", {}).get("neg_words", 0)
+        subj = d.get("emocional", {}).get("subjectivity", 0)
 
         # Criterios para determinar la causa más probable de la alerta
         if neg >= 3 and prom > 4.2:
@@ -2801,6 +2821,7 @@ def show_alertas_inteligentes():
     st.subheader("🔍 Detalle del Caso Más Crítico")
     
     # Mostrar el detalle del caso con mayor puntaje de riesgo
+    df = df.sort_values("puntaje", ascending=False).reset_index(drop=True)
     caso = df.iloc[0]
     det = caso["detalle_json"]
     
@@ -3654,7 +3675,6 @@ if rol_seleccionado == "Estudiante":
                     try:
                         with st.spinner("Analizando respuestas..."):
                             result = process_survey_service(nivel, edad, respuestas)
-                            st.write("DEBUG result:", result)
 
                         # SOLO si existe result
                         if not result:
@@ -3719,9 +3739,9 @@ if rol_seleccionado == "Estudiante":
                 with col2:
                     ultimo_riesgo = df_hist["riesgo"].iloc[0]
                     color_map = {
-                        "🟢 Bajo": RISK_COLORS["🟢 Bajo"],
-                        "🟡 Medio": RISK_COLORS["🟡 Medio"],
-                        "🔴 Alto": RISK_COLORS["🔴 Alto"]
+                        "Bajo": "🟢",
+                        "Medio": "🟡",
+                        "Alto": "🔴"
                     }
                     st.metric("Último riesgo", 
                     f"{color_map.get(ultimo_riesgo, '⚪')} {ultimo_riesgo}")
@@ -3768,14 +3788,14 @@ if rol_seleccionado == "Estudiante":
 
                 def color_riesgo(val):
                     colores = {
-                        "🟢 Bajo": "background-color: rgba(46,204,113,0.2)",
-                        "🟡 Medio": "background-color: rgba(241,196,15,0.2)",
-                        "🔴 Alto": "background-color: rgba(231,76,60,0.2)"
+                        "Bajo": "background-color: rgba(46,204,113,0.2)",
+                        "Medio": "background-color: rgba(241,196,15,0.2)",
+                        "Alto": "background-color: rgba(231,76,60,0.2)"
                     }
                     return colores.get(val, "")
 
                 st.dataframe(
-                    df_tabla.style.applymap(color_riesgo, subset=["riesgo_label"]),
+                    df_tabla.style.applymap(color_riesgo, subset=["Riesgo"]),
                     use_container_width=True,
                     hide_index=True
                 )
