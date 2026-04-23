@@ -1,55 +1,36 @@
 # ============================================
 # DEPENDENCIAS PRINCIPALES (OBLIGATORIAS)
 # ============================================
-streamlit==1.32.0
-pandas==2.2.0
-plotly==5.18.0
-textblob==0.17.1
-scikit-learn==1.4.0
+streamlit==1.32.0       # Framework principal de la app
+pandas==2.2.0           # Manejo de datos y tablas
+plotly==5.18.0          # Visualizaciones interactivas
+textblob==0.17.1        # Procesamiento de lenguaje natural
+scikit-learn==1.4.0     # Modelos de machine learning
 
 # ============================================
 # DEPENDENCIAS SECUNDARIAS (NECESARIAS)
 # ============================================
-numpy==1.26.4
-matplotlib==3.8.2
-reportlab==4.0.8
+numpy==1.26.4           # Operaciones matemáticas y arrays
+matplotlib==3.8.2       # Visualización de gráficos básicos
+reportlab==4.0.8        # Generación de PDFs
 
 # ============================================
 # DEPENDENCIAS OPCIONALES/RECOMENDADAS
 # ============================================
-python-dotenv==1.0.1       # Para variables de entorno (opcional)
-requests==2.31.0           # Para futuras integraciones API (opcional)
-nltk==3.8.1                # Usado por TextBlob automáticamente
+python-dotenv==1.0.1    # Manejo de variables de entorno
+requests==2.31.0        # Para futuras integraciones API
+nltk==3.8.1             # Necesario para TextBlob (tokenización, stopwords)
 
 # ============================================
 # DEPENDENCIAS ADICIONALES RECOMENDADAS
 # ============================================
-openpyxl==3.1.2            # Para exportar Excel (necesario para pandas ExcelWriter)
-Pillow==10.2.0             # Para manejo de imágenes (el logo)
-joblib==1.3.2              # Usado por scikit-learn internamente
+openpyxl==3.1.2         # Exportar/leer Excel con pandas
+Pillow==10.2.0          # Manejo de imágenes (logos, gráficos)
+joblib==1.3.2           # Usado por scikit-learn internamente
 
 # ============================================
 # DEPENDENCIAS DE DESARROLLO (OPCIONAL)
 # ============================================
-# black==23.12.1           # Formateador de código (opcional)
-# pylint==3.0.3            # Linter (opcional)
-# pytest==7.4.4           # Testing (opcional)
-
-
-# VERSION MINIMA 
-
-
-# requirements_minimal.txt
-streamlit>=1.28.0
-pandas>=2.0.0
-plotly>=5.0.0
-textblob>=0.17.0
-scikit-learn>=1.3.0
-numpy>=1.24.0
-matplotlib>=3.7.0
-reportlab>=4.0.0
-openpyxl>=3.0.0
-Pillow>=10.0.0
-python-dotenv>=1.0.0
-vaderSentiment==3.3.2
-langdetect==1.0.9
+# black==23.12.1         # Formateador de código
+# pylint==3.0.3          # Linter
+# pytest==7.4.4          # Pruebas automatizadas

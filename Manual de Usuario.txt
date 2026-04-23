@@ -1,0 +1,79 @@
+==============================================================
+MANUAL DE INSTALACIÓN – PROYECTO DETECCIÓN EMOCIONAL
+==============================================================
+
+1. REQUISITOS PREVIOS
+---------------------
+- Sistema operativo: Windows 10/11, macOS, Linux (Ubuntu 22.04 recomendado)
+- Python 3.11 o superior
+- pip actualizado: python -m pip install --upgrade pip
+- Git instalado
+- Entorno virtual recomendado (venv o conda)
+
+2. CLONAR REPOSITORIO
+----------------------
+Abrir terminal y ejecutar:
+    git clone https://github.com/masterstest500/deteccion-emocional.git
+    cd deteccion-emocional
+
+3. CREAR ENTORNO VIRTUAL
+------------------------
+Python venv:
+    python -m venv venv
+
+Activar entorno:
+
+- Windows:
+    venv\Scripts\activate
+- macOS/Linux:
+    source venv/bin/activate
+
+4. INSTALACIÓN DE DEPENDENCIAS
+-------------------------------
+Instalar dependencias principales:
+    pip install -r requirements.txt
+
+Instalación mínima (solo esenciales):
+    pip install -r requirements_minimal.txt
+
+5. VARIABLES OPCIONALES
+------------------------
+Si desea usar variables de entorno o futuras integraciones:
+- Crear archivo `.env` en la raíz del proyecto
+- Ejemplo:
+    API_KEY=tu_clave
+    DEBUG_MODE=True
+
+6. EJECUCIÓN DEL PROYECTO
+---------------------------
+Con el entorno virtual activado:
+    streamlit run app.py
+
+Esto abrirá la aplicación en su navegador por defecto.
+
+7. NOTAS IMPORTANTES
+--------------------
+- La aplicación guarda historial en archivos .csv y Excel (no requiere DB externa)
+- Reportes PDF requieren `reportlab`
+- Gráficos interactivos requieren `plotly`
+- Procesamiento de texto requiere `textblob` y `nltk` (ya incluidos)
+- Para soporte Excel e imágenes: `openpyxl` y `Pillow`
+
+8. RECOMENDACIONES
+-------------------
+- Mantener Python y pip actualizados
+- Usar siempre entorno virtual
+- Si agrega nuevas librerías, actualizar requirements.txt:
+    pip freeze > requirements.txt
+
+9. CONFIRMACIÓN DE FUNCIONAMIENTO
+---------------------------------
+Al ejecutar `streamlit run app.py`, verificar:
+1. Pantalla de inicio con selección de roles
+2. Encuestas adaptativas
+3. Reportes de resultados con gráficos y recomendaciones
+4. Historial de evaluaciones
+
+Si todo carga correctamente, la instalación fue exitosa.
+
+==============================================================
