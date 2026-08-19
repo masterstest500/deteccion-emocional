@@ -5,8 +5,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 from datetime import datetime
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -14,7 +14,6 @@ from config import RISK_LABELS, RISK_COLORS
 from utils import apply_riesgo_labels
 import io
 import zipfile
-import typing as t
 import base64
 import random
 import time
@@ -23,6 +22,7 @@ import streamlit.components.v1 as components
 import math
 import hashlib  # NEW: For password security
 from dotenv import load_dotenv
+import analytics
 load_dotenv()
 
 from db_queries import (
@@ -105,6 +105,9 @@ def router():
     rol = route["rol"]
     page = route["page"]
 
+    if page is None:
+        return
+
     if rol == "Estudiante":
         estudiante_router(page)
 
@@ -130,6 +133,8 @@ def estudiante_router(page):
         st.session_state.menu_estudiante = "Información"
     elif page == "acerca":
         st.session_state.menu_estudiante = "Acerca"
+    else:
+        st.session_state.menu_estudiante = None
 
 
 def docente_router(page):
@@ -147,6 +152,8 @@ def docente_router(page):
         st.session_state.menu_docente = "Exportar datos"
     elif page == "acerca":
         st.session_state.menu_docente = "Acerca"
+    else:
+        st.session_state.menu_docente = None
 
 
 def psicologo_router(page):
@@ -155,10 +162,11 @@ def psicologo_router(page):
     elif page == "casos":
         st.session_state.menu_psicologo = "Casos prioritarios"
     elif page == "dashboard":
-        st.session_state.menu_psicologo = "Dashboard historico"
+        st.session_state.menu_psicologo = "Dashboard histórico"
     elif page == "acerca":
         st.session_state.menu_psicologo = "Acerca"
-
+    else:
+        st.session_state.menu_psicologo = None
 
 
 # ================================================================
@@ -172,7 +180,7 @@ if "loader_shown" not in st.session_state:
 if "consentimiento" not in st.session_state:
     st.session_state.consentimiento = False
 if "nivel_usuario" not in st.session_state:
-    st.session_state.nivel_usuario = "Primaria"
+    st.session_state.nivel_usuario = "Universidad"
 if "clave_docente" not in st.session_state:
     st.session_state.clave_docente = ""
 if "uid" not in st.session_state:
@@ -204,22 +212,7 @@ if "menu_psicologo" not in st.session_state:
 
 router()
 
-def router():
-    route = get_route()
-    rol = route["rol"]
-    page = route["page"]
 
-    if page is None:
-        return  # 🔥 evita errores al iniciar
-
-    if rol == "Estudiante":
-        estudiante_router(page)
-
-    elif rol == "Docente":
-        docente_router(page)
-
-    elif rol == "Psicólogo":
-        psicologo_router(page)
 
 # ================================================================
 # CSS PARA OCULTAR ELEMENTOS NO DESEADOS DE STREAMLIT
@@ -383,217 +376,21 @@ def safe_float(value, default=0.0):
         return default
 
 # ================================================================
-# ANÁLISIS EMOCIONAL (TextBlob + conteo simple)
+# NLP VENEZOLANO — importado desde nlp_analysis.py
 # ================================================================
-
-# ================================================================
-# NLP VENEZOLANO — Diccionario emocional + VADER adaptado
-# ================================================================
-
-# Diccionario emocional venezolano expandido
-EMOCIONES_VE = {
-    "tristeza": [
-        "triste", "tristeza", "llorar", "lloro", "llorando", "deprimido",
-        "depresión", "melancolía", "melancólico", "abatido", "desanimado",
-        "sin ganas", "desmotivado", "vacío", "soledad", "solo", "sola",
-        "abandono", "perdido", "perdida", "infeliz", "sufriendo", "sufro"
-    ],
-    "ansiedad": [
-        "ansioso", "ansiosa", "ansiedad", "nervioso", "nerviosa", "nervios",
-        "estresado", "estresada", "estrés", "angustia", "angustiado",
-        "preocupado", "preocupada", "preocupación", "miedo", "temor",
-        "asustado", "pánico", "agitado", "inquieto", "intranquilo",
-        "desesperado", "desesperación", "paranoia"
-    ],
-    "agotamiento": [
-        "cansado", "cansada", "cansancio", "agotado", "agotada", "agotamiento",
-        "sin energía", "fatigado", "fatiga", "exhausto", "rendido", "rendida",
-        "no puedo más", "no aguanto", "sobrecargado", "sobrecargada",
-        "quemado", "burnout", "dormido", "somnoliento"
-    ],
-    "frustracion": [
-        "frustrado", "frustrada", "frustración", "molesto", "molesta",
-        "irritado", "irritada", "rabia", "rabioso", "enojado", "enojada",
-        "bravo", "brava", "arrecho", "arrechera", "fastidiado", "harto",
-        "harta", "no soporto", "odio", "detesto", "indignado"
-    ],
-    "desesperanza": [
-        "sin esperanza", "desesperanzado", "no vale", "no sirve",
-        "para qué", "para que", "no tiene sentido", "inútil", "inutil",
-        "fracasado", "fracasada", "no puedo", "imposible", "nunca",
-        "siempre mal", "todo mal", "nada funciona", "rendirse"
-    ],
-    "alegria": [
-        "feliz", "felicidad", "alegre", "alegría", "contento", "contenta",
-        "bien", "excelente", "genial", "chévere", "chevere", "bacano",
-        "emocionado", "emocionada", "motivado", "motivada", "energético",
-        "positivo", "positiva", "tranquilo", "tranquila", "estable"
-    ],
-    "confusion": [
-        "confundido", "confundida", "confusión", "no entiendo", "perdido",
-        "perdida", "desorientado", "bloqueado", "bloqueada", "no sé",
-        "no se", "dudas", "inseguro", "insegura"
-    ]
-}
-
-# Palabras negativas para conteo rápido
-PALABRAS_NEGATIVAS = [
-    "triste", "mal", "cansado", "solo", "estresado", "ansioso", "deprimido",
-    "agotado", "preocupado", "paranoia", "frustrado", "irritable", "angustia",
-    "arrecho", "arrechera", "harto", "desesperado", "rendido", "quemado",
-    "vacío", "inútil", "fracasado", "odio", "rabia", "miedo", "pánico"
-]
-
-# Inicializar VADER
-_vader = SentimentIntensityAnalyzer()
-
-def analyze_text_advanced(text: str) -> t.Tuple[float, float, int]:
-    """
-    Análisis NLP adaptado al español venezolano.
-    Devuelve: (polarity [-1..1], subjectivity [0..1], neg_count)
-    """
-    if not text or not text.strip():
-        return 0.0, 0.0, 0
-
-    text_lower = text.lower()
-
-    # 1. Conteo de palabras negativas (contexto venezolano)
-    neg_count = sum(1 for w in PALABRAS_NEGATIVAS if w in text_lower)
-
-    # 2. Conteo por categoría emocional
-    scores_emociones = {}
-    for emocion, palabras in EMOCIONES_VE.items():
-        score = sum(1 for p in palabras if p in text_lower)
-        scores_emociones[emocion] = score
-
-    total_emocional = sum(scores_emociones.values())
-
-    # 3. VADER para polaridad base
-    vader_scores = _vader.polarity_scores(text)
-    vader_compound = vader_scores["compound"]  # -1 a 1
-
-    # 4. Ajuste por contexto venezolano
-    # Si hay palabras negativas venezolanas, penalizar la polaridad
-    if neg_count > 0:
-        ajuste_negativo = min(neg_count * 0.15, 0.6)
-        polarity = vader_compound - ajuste_negativo
-    else:
-        polarity = vader_compound
-
-    # Si hay palabras de alegría, reforzar positivo
-    if scores_emociones.get("alegria", 0) > 0:
-        polarity = min(polarity + scores_emociones["alegria"] * 0.1, 1.0)
-
-    polarity = max(-1.0, min(1.0, round(polarity, 3)))
-
-    # 5. Subjetividad basada en densidad emocional
-    if len(text.split()) > 0:
-        densidad = total_emocional / len(text.split())
-        subjectivity = min(densidad * 3, 1.0)
-    else:
-        subjectivity = 0.0
-
-    subjectivity = round(subjectivity, 3)
-
-    return polarity, subjectivity, neg_count
-
-
-def get_emociones_texto(text: str) -> dict:
-    """
-    Devuelve el perfil emocional completo del texto.
-    Usado para el análisis avanzado en reportes.
-    """
-    if not text or not text.strip():
-        return {e: 0 for e in EMOCIONES_VE.keys()}
-
-    text_lower = text.lower()
-    resultado = {}
-    for emocion, palabras in EMOCIONES_VE.items():
-        resultado[emocion] = sum(1 for p in palabras if p in text_lower)
-
-    return resultado
-
-# ================================================================
-# POMS reducido (Profile of Mood States) — items seleccionados
-# ================================================================
-
-POMS_ITEMS = {
-    "tension": ["nervioso", "tenso", "estresado"],
-    "depression": ["triste", "abatido", "desanimado"],
-    "anger": ["irritable", "rabioso", "frustrado"],
-    "fatigue": ["cansado", "agotado", "somnoliento"],
-    "vigor": ["activo", "energético", "alerta"]
-}
-
-def score_poms(answers_block: dict) -> dict:
-    """
-    answers_block: dict con ítems POMS (palabra: valor 1-5)
-    Devuelve dict con puntajes por subescala normalizados (0..1)
-    """
-    scores = {}
-    for sub, items in POMS_ITEMS.items():
-        s = 0
-        count = 0
-        for item in items:
-            val = answers_block.get(item)
-            if val is None:
-                # si faltan valores, asumimos 3 neutro para prevenir NaN
-                val = 3
-            s += float(val)
-            count += 1
-        # Normalizamos: cada ítem 1..5 -> subescala promedio 1..5 -> llevamos a 0..1
-        avg = s / max(1, count)
-        scores[sub] = round((avg - 1) / 4, 3)
-    return scores
-
-# ================================================================
-# Valence-Arousal (VA) exposición simple
-# ================================================================
-
-def normalize_va(valence_raw: int, arousal_raw: int, v_min=1, v_max=9, a_min=1, a_max=9):
-    # valence: 1..9 -> -1..1
-    valence = ((valence_raw - v_min) / (v_max - v_min)) * 2 - 1
-    arousal = (arousal_raw - a_min) / (a_max - a_min)
-    return round(valence,3), round(arousal,3)
-
-# ================================================================
-# Perfiles emocionales (simple heuristics, NO DIAGNÓSTICO)
-# ================================================================
-
-def classify_profile(promedio_encuesta: float, polarity: float, subj: float, poms_scores: dict, neg_words: int):
-    """
-    Clasifica el perfil emocional basado en escala 0-1.
-    NO es diagnóstico clínico — es orientativo y preventivo.
-    """
-    vigor   = poms_scores.get("vigor", 0.5)
-    fatigue = poms_scores.get("fatigue", 0.5)
-    tension = poms_scores.get("tension", 0.5)
-    depression = poms_scores.get("depression", 0.5)
-
-    # Resiliente: bajo malestar general, buen vigor, texto positivo
-    if promedio_encuesta <= 0.40 and polarity >= 0 and vigor >= 0.5:
-        return "Resiliente"
-
-    # Fatigado: fatiga alta, malestar moderado-alto
-    if fatigue >= 0.55 and promedio_encuesta >= 0.40:
-        return "Fatigado"
-
-    # Estrés/Ansioso: tensión alta o muchas palabras negativas
-    if tension >= 0.45 or neg_words >= 2:
-        return "Estrés"
-
-    # Inestable emocional: muy subjetivo pero sin polaridad clara
-    if subj >= 0.60 and abs(polarity) < 0.20:
-        return "Inestable emocional"
-
-    # Riesgo neuro-afectivo: depresión alta + texto negativo
-    if depression >= 0.45 and polarity < -0.15:
-        return "Riesgo neuro-afectivo"
-    if neg_words >= 3 and promedio_encuesta >= 0.55:
-        return "Riesgo neuro-afectivo"
-
-    # Perfil mixto: señales mixtas sin patrón claro
-    return "Perfil mixto"
+# Toda la lógica de análisis de sentimiento (VADER + ajuste léxico
+# venezolano), POMS y Valence-Arousal vive ahora en nlp_analysis.py.
+# Se importa aquí para no tener que reescribir cada llamada existente
+# en el resto de app.py.
+from nlp_analysis import (
+    EMOCIONES_VE,
+    PALABRAS_NEGATIVAS,
+    analyze_text_advanced,
+    get_emociones_texto,
+    score_poms,
+    normalize_va,
+    classify_profile,
+)
 
 # ================================================================
 # FASE 1 — Sistema de encuestas por nivel
@@ -601,50 +398,9 @@ def classify_profile(promedio_encuesta: float, polarity: float, subj: float, pom
 
 def get_questions_by_level(nivel: str):
     """
-    Devuelve la estructura de preguntas según el nivel seleccionado.
+    Estructura de preguntas exclusiva para el nivel universitario.
     """
-    if nivel == "Primaria":
-        return [
-            {"id": "emocion", "tipo": "carita", "texto": "¿Cómo te sientes hoy?",
-             "opciones": ["😀","🙂","😐","🙁","😢"]},
-
-            {"id": "energia", "tipo": "carita", "texto": "¿Cómo está tu energía?",
-             "opciones": ["⚡","🙂","😐","🥱","😴"]},
-
-            {"id": "convivencia", "tipo": "likert", "texto": "¿Te fue bien con tus compañeros hoy?"},
-
-            {"id": "seguridad", "tipo": "likert", "texto": "¿Te sentiste seguro en clase o en recreo?"},
-
-            {"id": "nd_atencion", "tipo": "carita", "texto": "¿Te cuesta quedarte quieto y prestar atención en clase?",
-            "opciones": ["😀","🙂","😐","🙁","😢"]},
-
-            {"id": "nd_sensorial", "tipo": "carita", "texto": "¿Los ruidos fuertes o las luces brillantes te molestan mucho?",
-            "opciones": ["😀","🙂","😐","🙁","😢"]},
-
-            {"id": "nd_olvidos", "tipo": "carita", "texto": "¿Olvidas cosas que te dijeron hace poco?",
-            "opciones": ["😀","🙂","😐","🙁","😢"]},
-            
-            {"id": "texto", "tipo": "texto", "texto": "¿Quieres contarme algo más? (opcional)"}
-        ]
-
-    elif nivel == "Secundaria":
-        return [
-            {"id": "estres", "tipo": "likert", "texto": "¿Cuánto estrés académico sientes?"},
-            {"id": "animo", "tipo": "likert", "texto": "¿Cómo describirías tu estado de ánimo?"},
-            {"id": "presion", "tipo": "likert", "texto": "¿Sientes presión social o comparaciones?"},
-            {"id": "sueno", "tipo": "likert", "texto": "¿Cómo ha sido tu sueño estos días?"},
-            {"id": "autoeficacia", "tipo": "likert", "texto": "¿Te sientes capaz de manejar tus tareas?"},
-            {"id": "conexion", "tipo": "likert", "texto": "¿Te sientes conectado con otras personas?"},
-            {"id": "texto", "tipo": "texto", "texto": "Describe cómo te has sentido (opcional)"},
-            {"id": "nd_atencion", "tipo": "likert", "texto": "¿Con qué frecuencia pierdes el hilo de lo que estabas haciendo?"},
-            {"id": "nd_sensorial", "tipo": "likert", "texto": "¿Los ruidos, luces o ambientes muy cargados te incomodan más que a otros?"},
-            {"id": "nd_inicio", "tipo": "likert", "texto": "¿Te cuesta empezar tareas aunque quieras hacerlas?"},
-            {"id": "nd_olvidos", "tipo": "likert", "texto": "¿Olvidas con frecuencia cosas importantes (citas, tareas, objetos)?"},
-            {"id": "nd_social", "tipo": "likert", "texto": "¿Te resulta difícil mantener conversaciones o entender lo que otros sienten?"}
-
-        ]
-
-    else:  # UNIVERSIDAD
+    if nivel == "Universidad":  # UNIVERSIDAD
         return [
         {"id": "estres", "tipo": "likert", "texto": "Nivel de estrés académico"},
         {"id": "fatiga", "tipo": "likert", "texto": "Fatiga mental reciente"},
@@ -707,110 +463,51 @@ def render_questions_by_level(questions):
 
 def process_results_by_level(nivel, respuestas, analisis_texto):
     polarity, subjectivity, neg_count = analisis_texto
+    q = respuestas
 
-    # VA por defecto para Primaria y Secundaria
-    valence_calc = round((polarity + 1) / 2 * 2 - 1, 3)
-    arousal_calc = round(subjectivity, 3)
-    nd_score = 0.5
+    # Normalizar base a 0-1
+    estres_n  = (q["estres"] - 1) / 4
+    fatiga_n  = (q["fatiga"] - 1) / 4
+    presion_n = (q["presion"] - 1) / 4
+    burnout_n = (q["burnout"] - 1) / 4
+    suenio_n  = (5 - q["suenio"]) / 4    # invertido
+    social_n  = (5 - q["social"]) / 4    # invertido
 
-    # -------------------------
-    # PRIMARIA
-    # -------------------------
-    if nivel == "Primaria":
-        mapa_caritas = {
-            "😀":1,"🙂":2,"😐":3,"🙁":4,"😢":5,
-            "⚡":1,"🙂":2,"😐":3,"🥱":4,"😴":5
-        }
-        emoscore   = mapa_caritas.get(respuestas["emocion"], 3)
-        energiascore = mapa_caritas.get(respuestas["energia"], 3)
-        conviv = respuestas["convivencia"]
-        segur  = respuestas["seguridad"]
+    base_norm = (estres_n + fatiga_n + presion_n + burnout_n + suenio_n + social_n) / 6
 
-        # Promedio 1-5, normalizado a 0-1
-        promedio_raw = (emoscore + energiascore + conviv + segur) / 4
-        promedio_norm = (promedio_raw - 1) / 4  # 0=mejor, 1=peor
+    # Normalizar POMS a 0-1
+    tension_n    = (q["poms_tension"] - 1) / 4
+    depresion_n  = (q["poms_depresion"] - 1) / 4
+    fatiga_p_n   = (q["poms_fatiga"] - 1) / 4
+    vigor_n      = (5 - q["poms_vigor"]) / 4   # invertido
 
-        # Penalización por texto negativo (peso reducido)
-        texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
+    poms_norm = (tension_n + depresion_n + fatiga_p_n + vigor_n) / 4
 
-        puntaje = promedio_norm + texto_penalty
-        nd_atencion  = mapa_caritas.get(respuestas.get("nd_atencion", "😐"), 3)
-        nd_sensorial = mapa_caritas.get(respuestas.get("nd_sensorial", "😐"), 3)
-        nd_olvidos   = mapa_caritas.get(respuestas.get("nd_olvidos", "😐"), 3)
-        nd_score = ((nd_atencion + nd_sensorial + nd_olvidos) / 3 - 1) / 4
+    # Penalización texto
+    texto_penalty = (neg_count * 0.03) + ((1 - polarity) * 0.03)
 
-    # -------------------------
-    # SECUNDARIA
-    # -------------------------
-    elif nivel == "Secundaria":
-        q = respuestas
-        # Normalizar cada item a 0-1 (algunos invertidos: mayor = mejor)
-        estres_n    = (q["estres"] - 1) / 4
-        animo_n     = (5 - q["animo"]) / 4      # invertido
-        presion_n   = (q["presion"] - 1) / 4
-        sueno_n     = (5 - q["sueno"]) / 4       # invertido
-        conexion_n  = (5 - q["conexion"]) / 4    # invertido
+    # Puntaje final 0-1 (base 70%, POMS 30%)
+    puntaje = (base_norm * 0.70) + (poms_norm * 0.30) + texto_penalty
 
-        promedio_norm = (estres_n + animo_n + presion_n + sueno_n + conexion_n) / 5
-        texto_penalty = (neg_count * 0.05) + ((1 - polarity) * 0.05)
+    # Garantizar que el puntaje permanezca dentro del rango 0..1
+    puntaje = max(0.0, min(1.0, puntaje))
 
-        puntaje = promedio_norm + texto_penalty
-        nd_items = [
-            respuestas.get("nd_atencion", 3),
-            respuestas.get("nd_sensorial", 3),
-            respuestas.get("nd_inicio", 3),
-            respuestas.get("nd_olvidos", 3),
-            respuestas.get("nd_social", 3),
-        ]
-        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
+    # VA real
+    valence_raw = respuestas.get("valence_raw", 5)
+    arousal_raw = respuestas.get("arousal_raw", 5)
+    valence_calc, arousal_calc = normalize_va(valence_raw, arousal_raw)
 
-    # -------------------------
-    # UNIVERSIDAD
-    # -------------------------
-    else:
-        q = respuestas
+    nd_items = [
+        respuestas.get("nd_atencion", 3),
+        respuestas.get("nd_sensorial", 3),
+        respuestas.get("nd_inicio", 3),
+        respuestas.get("nd_olvidos", 3),
+        respuestas.get("nd_rutinas", 3),
+        respuestas.get("nd_social", 3),
+    ]
+    nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
 
-        # Normalizar base a 0-1
-        estres_n  = (q["estres"] - 1) / 4
-        fatiga_n  = (q["fatiga"] - 1) / 4
-        presion_n = (q["presion"] - 1) / 4
-        burnout_n = (q["burnout"] - 1) / 4
-        suenio_n  = (5 - q["suenio"]) / 4    # invertido
-        social_n  = (5 - q["social"]) / 4    # invertido
-
-        base_norm = (estres_n + fatiga_n + presion_n + burnout_n + suenio_n + social_n) / 6
-
-        # Normalizar POMS a 0-1
-        tension_n    = (q["poms_tension"] - 1) / 4
-        depresion_n  = (q["poms_depresion"] - 1) / 4
-        fatiga_p_n   = (q["poms_fatiga"] - 1) / 4
-        vigor_n      = (5 - q["poms_vigor"]) / 4   # invertido
-
-        poms_norm = (tension_n + depresion_n + fatiga_p_n + vigor_n) / 4
-
-        # Penalización texto
-        texto_penalty = (neg_count * 0.03) + ((1 - polarity) * 0.03)
-
-        # Puntaje final 0-1 (base 70%, POMS 30%)
-        puntaje = (base_norm * 0.70) + (poms_norm * 0.30) + texto_penalty
-
-        # VA real
-        valence_raw = respuestas.get("valence_raw", 5)
-        arousal_raw = respuestas.get("arousal_raw", 5)
-        valence_calc, arousal_calc = normalize_va(valence_raw, arousal_raw)
-        nd_items = [
-            respuestas.get("nd_atencion", 3),
-            respuestas.get("nd_sensorial", 3),
-            respuestas.get("nd_inicio", 3),
-            respuestas.get("nd_olvidos", 3),
-            respuestas.get("nd_rutinas", 3),
-            respuestas.get("nd_social", 3),
-        ]
-        nd_score = (sum(nd_items) / len(nd_items) - 1) / 4
-
-    # -------------------------
     # Clasificación final (escala 0-1)
-    # -------------------------
     if puntaje >= 0.65:
         riesgo = "Alto"
     elif puntaje >= 0.40:
@@ -1238,26 +935,32 @@ def show_loading_screen(logo_base64: str, frase: str, seconds: int = 3):
 # ================================================================
 
 def logout():
-    """Función de logout mejorada - Solo limpia estados de docente"""
-    # Solo limpiar estados relacionados con docente
-    docente_keys = ['docente_activo', 'docente', 'logged_in_user_id']
-    for key in docente_keys:
+    """Función de logout mejorada - Limpia estados de Docente y Psicólogo"""
+    
+    # 1. Limpiar estados de autenticación de ambos roles
+    auth_keys = [
+        'docente_activo', 'docente', 'logged_in_user_id',
+        'psicologo_activo', 'psicologo'
+    ]
+    for key in auth_keys:
         if key in st.session_state:
             del st.session_state[key]
-    
-    # Mantener estados esenciales
+
+        
+    if 'route' in st.session_state and isinstance(st.session_state.route, dict):
+        st.session_state.route["rol"] = "Estudiante"
+
+    # 3. Mantener estados esenciales
     essential_keys = ['landing_done', 'loader_shown', 'consentimiento', 'nivel_usuario', 'uid']
     for key in essential_keys:
         if key not in st.session_state:
-            # Restaurar estados esenciales si se perdieron
             if key == 'consentimiento':
                 st.session_state[key] = False
             elif key == 'nivel_usuario':
-                st.session_state[key] = "Primaria"
+                st.session_state[key] = "Universidad"
     
-    # Usar bandera para rerun seguro
+    # 4. Activar bandera para recargar la interfaz de forma segura
     st.session_state.needs_rerun = True
-
 
 
 
@@ -1272,43 +975,36 @@ def md_to_html(text: str) -> str:
 # FUNCIÓN AUXILIAR DE REPORTE INDIVIDUAL (SHOW SINGLE REPORT)
 # ================================================================
 
-def show_single_report(riesgo, perfil, detalle_param =None):
+def show_single_report(riesgo, perfil, resultado=None):
     """Muestra un reporte profesional basado en riesgo, perfil y detalle técnico"""
     st.title("✅ Reporte de Análisis Emocional")
     
     # ================================================================
-    # 1. DEFINIR Y VALIDAR LOS DATOS DE UNA VEZ POR TODAS
+    # 1. DEFINIR Y VALIDAR LOS DATOS
     # ================================================================
-    datos = {}
-    
-    # Procesar el parámetro que nos llega (puede ser None, string o dict)
-    if detalle_param is not None:
-        if isinstance(detalle_param, str):
-            # Si es string, intentar convertirlo a JSON
-            try:
-                datos = json.loads(detalle_param)
-            except:
-                datos = {}  # Si falla, usar diccionario vacío
-        elif isinstance(detalle_param, dict):
-            # Si ya es diccionario, usarlo directamente
-            datos = detalle_param
-        else:
-            # Cualquier otro tipo, usar vacío
-            datos = {}
+    datos = resultado if isinstance(resultado, dict) else {}
     
     # ================================================================
     # 2. EXTRAER TODAS LAS MÉTRICAS CON VALORES POR DEFECTO
     # ================================================================
     valence = datos.get("va", {}).get("valence", 0.0)
     arousal = datos.get("va", {}).get("arousal", 0.5)
+
     polarity = datos.get("emocional", {}).get("polarity", 0.0)
     subjectivity = datos.get("emocional", {}).get("subjectivity", 0.0)
     neg_words = datos.get("emocional", {}).get("neg_words", 0)
-    poms_tension = datos.get("POMS", {}).get("tension", 0.0)
-    poms_fatigue = datos.get("POMS", {}).get("fatigue", 0.0)
-    promedio = datos.get("resultado", {}).get("puntaje", 0.0)
+
+    poms_tension = datos.get("poms", {}).get("tension", 0.0)
+    poms_fatigue = datos.get("poms", {}).get("fatigue", 0.0)
+
+    promedio = datos.get("puntaje", 0.0)
+
     texto_snippet = datos.get("texto", "")
     
+    # Historial para motor de analytics (obtenido del dict o fallback simulado)
+
+    historial_riesgo = [promedio]   
+
     # ================================================================
     # 3. CONFIGURACIÓN VISUAL PROFESIONAL
     # ================================================================
@@ -1338,14 +1034,8 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     
     emoji_perfil = emojis_perfil.get(perfil_mapeado, "📊")
     
-    # ================================================================
-    # 4. ENCABEZADO DEL REPORTE
-    # ================================================================
-        # NORMALIZAR RIESGO (ESTO ES LA CAUSA DEL BUG VISUAL)
-    riesgo_normalizado = (
-        riesgo.lower() if isinstance(riesgo, str)
-        else "medio"
-    )
+    # Normalizar riesgo
+    riesgo_normalizado = riesgo.lower() if isinstance(riesgo, str) else "medio"
 
     if "alto" in riesgo_normalizado:
         riesgo_key = "Alto"
@@ -1356,18 +1046,39 @@ def show_single_report(riesgo, perfil, detalle_param =None):
 
     riesgo_config = config_riesgo.get(riesgo_key, {"color": "#666666", "emoji": "⚪", "color_name": "gris"})
 
-
+    # ================================================================
+    # 4. ENCABEZADO Y TRAYECTORIA (CONEXIÓN 1: ANALYTICS)
+    # ================================================================
     st.markdown(f"""
     ### {riesgo_config['emoji']} **Nivel de Riesgo:** <span style='color:{riesgo_config['color']}; font-weight:bold;'>{riesgo_key.upper()}</span>
     ### {emoji_perfil} **Perfil Emocional:** {perfil_mapeado}
     """, unsafe_allow_html=True)
     
+    # --- CONEXIÓN CON ANALYTICS.PY (CÁLCULOS DE TRAYECTORIA) ---
+    trend_info = analytics.analyze_risk_trend(historial_riesgo)
+    is_deteriorating = analytics.detect_progressive_deterioration(historial_riesgo)
+    abrupt_info = analytics.detect_abrupt_change(historial_riesgo)
+    priority_score = analytics.calculate_priority_score(promedio, historial_riesgo)
+    stability_index = analytics.calculate_stability_index(historial_riesgo)
+    
+    # Renderizado de métricas evolutivas
+    c_tr1, c_tr2, c_tr3, c_tr4 = st.columns(4)
+    with c_tr1:
+        st.metric("Prioridad Institucional", f"{priority_score}/100")
+    with c_tr2:
+        st.metric("Tendencia Histórica", trend_info["trend"], delta=f"{trend_info['delta']}")
+    with c_tr3:
+        st.metric("Índice Estabilidad", f"{stability_index}%")
+    with c_tr4:
+        st.metric("Alerta Deterioro", "SÍ ⚠️" if is_deteriorating or abrupt_info["abrupt"] else "NO")
+
     st.markdown("---")
 
-    # AQUÍ ESTABA EL ERROR: Todo lo de abajo ahora tiene 4 espacios de sangría
+    # ================================================================
+    # 5. PERFIL EMOCIONAL VISUAL
+    # ================================================================
     st.subheader("🎯 Perfil Emocional Visual")
 
-    # Preparar valores
     def clamp(v):
         return max(v, 0.01)
 
@@ -1379,10 +1090,8 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         clamp((valence + 1) / 2)
     ]
 
-    # Llamada a la nueva librería de gráficos
     fig_radar, color_linea = charts.crear_radar_poms(valores, riesgo_key)
 
-    # Maquetado de Streamlit
     col_radar, col_legend = st.columns([2, 1])
     with col_radar:
         st.plotly_chart(fig_radar, use_container_width=True)
@@ -1397,12 +1106,26 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             </p>
         </div>
         """, unsafe_allow_html=True)
+
     # ================================================================
-    # 5. ANÁLISIS PSICOLÓGICO PROFESIONAL
+    # 6. ANÁLISIS PSICOLÓGICO Y MOTOR DE RECOMENDACIONES (CONEXIÓN 2: ANALYTICS)
     # ================================================================
     st.subheader("🔬 Análisis Psicológico y Neurocientífico")
     
-    # DICCIONARIO COMPLETO DE RECOMENDACIONES (DEFINIDO AQUÍ, NO AFUERA)
+    # Explicación automatizada del riesgo basada en factores
+    reasons = analytics.explain_risk(
+        stress=poms_tension * 5,  # Escala 0-5
+        fatigue=poms_fatigue * 5,
+        polarity=polarity,
+        trend=trend_info["trend"]
+    )
+    
+    if reasons:
+        st.markdown("**Factores Determinantes Detectados por el Motor:**")
+        for reason in reasons:
+            st.markdown(f"- ⚠️ {reason}")
+
+    # Mapeo tradicional de recomendaciones estáticas
     recomendaciones_profesionales = {
         "Resiliente": {
             "alto": {
@@ -1417,259 +1140,107 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             },
             "medio": {
                 "titulo": "🛡️ Resiliencia con Desafíos Moderados",
-                "analisis": f"**Análisis Psicológico:** Perfil Resiliente con riesgo MEDIO. Mantienes buenas estrategias de afrontamiento, pero algunos factores están desafiando tu equilibrio habitual.\n\n**Bases Neurocientíficas:** La corteza prefrontal (regulación ejecutiva) y la ínsula (conciencia corporal) mantienen buena integración, con signos de sobrecarga temporal.",
+                "analisis": f"Análisis Psicológico: Perfil Resiliente con riesgo MEDIO. Mantienes buenas estrategias de afrontamiento, pero algunos factores están desafiando tu equilibrio habitual.\n\n**Bases Neurocientíficas:** La corteza prefrontal y la ínsula mantienen buena integración, con signos de sobrecarga temporal.",
                 "recomendaciones": [
-                    "🧘 **Mindfulness Preventivo:** 10 minutos diarios de atención plena",
-                    "🏃 **Ejercicio Aeróbico:** 30 minutos, 3 veces por semana",
-                    "🌙 **Higiene de Sueño:** Rutina consistente, sin pantallas 1h antes",
-                    "🤝 **Conexión Social:** Mantén contactos de apoyo regularmente"
+                    "🧘 Mindfulness Preventivo: 10 minutos diarios de atención plena",
+                    "🏃 Ejercicio Aeróbico: 30 minutos, 3 veces por semana",
+                    "🌙 Higiene de Sueño: Rutina consistente, sin pantallas 1h antes",
+                    "🤝 Conexión Social: Mantén contactos de apoyo regularmente"
                 ]
             },
             "bajo": {
                 "titulo": "🛡️ Resiliencia Óptima Funcional",
-                "analisis": f"**Análisis Psicológico:** ¡Excelente! Tu perfil Resiliente muestra capacidad de adaptación y recuperación en niveles óptimos. El sistema de estrés (eje HPA) muestra buena regulación.\n\n**Bases Neurocientíficas:** Actividad prefrontal equilibrada sugiere buena función ejecutiva. Variabilidad de frecuencia cardíaca en rangos saludables.",
+                "analisis": f"Análisis Psicológico: ¡Excelente! Tu perfil Resiliente muestra capacidad de adaptación y recuperación en niveles óptimos.",
                 "recomendaciones": [
-                    "✅ **Mantenimiento:** Continúa con tus prácticas actuales",
-                    "🌟 **Variedad Experiencial:** Incorpora nuevos aprendizajes",
-                    "🌐 **Conexión Social Profunda:** Fortalece redes significativas",
-                    "📈 **Desarrollo Continuo:** Explora técnicas avanzadas de regulación"
+                    "✅ Mantenimiento: Continúa con tus prácticas actuales",
+                    "🌟 Variedad Experiencial: Incorpora nuevos aprendizajes",
+                    "🌐 Conexión Social Profunda: Fortalece redes significativas"
                 ]
             }
         },
-        
         "Ansioso/Tenso": {
             "alto": {
                 "titulo": "😰 Ansiedad Clínicamente Significativa",
-                "analisis": f"**Análisis Psicológico:** Niveles elevados de tensión ({poms_tension:.2f}/1.0) y activación ({arousal:.2f}/1.0). El sistema nervioso simpático muestra activación sostenida (lucha/huida).\n\n**Bases Neurocientíficas:** Posible elevación de cortisol afectando hipocampo (memoria) y amígdala (respuesta al miedo). Actividad reducida en corteza prefrontal medial.",
+                "analisis": f"Análisis Psicológico: Niveles elevados de tensión ({poms_tension:.2f}/1.0) y activación ({arousal:.2f}/1.0). El sistema nervioso simpático muestra activación sostenida.",
                 "recomendaciones": [
-                    "🆘 **Intervención Prioritaria:** Consulta profesional de salud mental",
-                    "🌬️ **Respiración 4-7-8:** 4s inhalar, 7s retener, 8s exhalar",
-                    "🌍 **Grounding 5-4-3-2-1:** 5 cosas que ves, 4 que tocas, 3 que oyes, 2 que hueles, 1 que pruebas",
-                    "📵 **Desconexión Digital:** 2 horas sin pantallas antes de dormir"
+                    "🆘 Intervención Prioritaria: Consulta profesional de salud mental",
+                    "🌬️ Respiración 4-7-8: 4s inhalar, 7s retener, 8s exhalar",
+                    "🌍 Grounding 5-4-3-2-1: 5 cosas que ves, 4 que tocas, 3 que oyes, 2 que hueles, 1 que pruebas"
                 ]
             },
             "medio": {
                 "titulo": "😰 Ansiedad Moderada Funcional",
-                "analisis": f"**Análisis Psicológico:** Tensión psicológica presente pero dentro de rangos manejables. El sistema de alerta está activado pero no abrumado.\n\n**Bases Neurocientíficas:** Variabilidad de frecuencia cardíaca muestra desequilibrio autonómico leve. Actividad amigdalina elevada pero regulable.",
+                "analisis": f"Análisis Psicológico: Tensión psicológica presente dentro de rangos manejables.",
                 "recomendaciones": [
-                    "🫀 **Coherencia Cardíaca:** 6 respiraciones/minuto durante 5 minutos",
-                    "🚶 **Ejercicio Moderado:** Caminata diaria de 30 minutos",
-                    "🍃 **Técnicas de Relajación:** Relajación muscular progresiva",
-                    "📆 **Estructura Diaria:** Rutinas predecibles reducen incertidumbre"
+                    "🫀 Coherencia Cardíaca: 6 respiraciones/minuto durante 5 minutos",
+                    "🚶 Ejercicio Moderado: Caminata diaria de 30 minutos"
                 ]
             },
             "bajo": {
                 "titulo": "😰 Ansiedad Adaptativa Leve",
-                "analisis": f"**Análisis Psicológico:** Preocupación y tensión dentro de rangos normales adaptativos. El sistema de alerta funciona adecuadamente como mecanismo protector.\n\n**Bases Neurocientíficas:** Respuesta al estrés apropiada al contexto. Homeostasis autonómica preservada.",
-                "recomendaciones": [
-                    "🛡️ **Prevención:** Mantén técnicas de relajación como hábito",
-                    "👁️ **Atención Plena:** Observa señales corporales tempranas",
-                    "⚖️ **Balance:** Respeta ciclos naturales trabajo-descanso",
-                    "📚 **Psicoeducación:** Aprende sobre mecanismos de ansiedad"
-                ]
+                "analisis": "Análisis Psicológico: Preocupación y tensión dentro de rangos normales adaptativos.",
+                "recomendaciones": ["🛡️ Prevención: Mantén técnicas de relajación como hábito"]
             }
         },
-        
         "Fatigado": {
             "alto": {
                 "titulo": "😴 Fatiga Crónica Severa",
-                "analisis": f"**Análisis Psicológico:** Agotamiento significativo (fatiga POMS: {poms_fatigue:.2f}/1.0). Depleción de recursos cognitivos afectando función ejecutiva.\n\n**Bases Neurocientíficas:** Posible acumulación de adenosina cerebral. Reducción de actividad prefrontal dorsolateral. Sueño no reparador.",
-                "recomendaciones": [
-                    "💤 **Prioridad Absoluta:** 7-9 horas sueño ininterrumpido",
-                    "⏰ **Micro-descansos:** 5 minutos cada hora de trabajo",
-                    "☀️ **Luz Natural:** Exposición matutina para regular ritmo circadiano",
-                    "🥗 **Nutrición Cerebral:** Omega-3, magnesio, vitamina B"
-                ]
+                "analisis": f"Análisis Psicológico: Agotamiento significativo (fatiga POMS: {poms_fatigue:.2f}/1.0). Depleción de recursos cognitivos.",
+                "recomendaciones": ["💤 Prioridad Absoluta: 7-9 horas sueño ininterrumpido"]
             },
             "medio": {
                 "titulo": "😴 Fatiga Mental Moderada",
-                "analisis": f"**Análisis Psicológico:** Cansancio mental presente con recursos cognitivos disminuidos pero recuperables.\n\n**Bases Neurocientíficas:** Glucosa cerebral subóptima para demanda ejecutiva. Actividad reducida en red de modo predeterminado.",
-                "recomendaciones": [
-                    "😴 **Siestas Estratégicas:** 20-30 minutos máximo",
-                    "💧 **Hidratación Cerebral:** 2L agua + electrolitos diarios",
-                    "🚴 **Ejercicio Suave:** Yoga, tai chi, caminata ligera",
-                    "🎯 **Gestión Energía:** Prioriza tareas en picos energéticos"
-                ]
+                "analisis": "Análisis Psicológico: Cansancio mental presente con recursos cognitivos disminuidos.",
+                "recomendaciones": ["😴 Siestas Estratégicas: 20-30 minutos máximo"]
             },
             "bajo": {
                 "titulo": "😴 Fatiga Leve Recuperable",
-                "analisis": f"**Análisis Psicológico:** Cansancio dentro de lo esperable dada la actividad reciente. Homeostasis energética adecuada.\n\n**Bases Neurocientíficas:** Ritmos circadianos preservados. Recuperación metabólica cerebral funcionando.",
-                "recomendaciones": [
-                    "⏸️ **Descanso Preventivo:** No esperes al agotamiento total",
-                    "🥑 **Combustible Cerebral:** Alimentos ricos en antioxidantes",
-                    "🔄 **Rotación Tareas:** Alterna tareas cognitivas y manuales",
-                    "🌿 **Técnicas Recarga:** Respiración diafragmática breve"
-                ]
-            }
-        },
-
-        "Inestable emocional": {
-            "alto": {
-                "titulo": "🎭 Inestabilidad Emocional Severa",
-                "analisis": f"**Análisis Psicológico:** Alta subjetividad emocional ({subjectivity:.2f}/1.0) con polaridad indefinida. El sistema límbico muestra activación errática sin patrón claro de regulación. Posible disregulación emocional por sobrecarga cognitiva.\n\n**Bases Neurocientíficas:** La corteza prefrontal ventromedial, responsable de integrar emoción y cognición, muestra señales de sobrecarga. El circuito amígdala-hipocampo puede estar generando respuestas emocionales desproporcionadas al contexto.",
-                "recomendaciones": [
-                    "🆘 **Apoyo Profesional:** Consulta con orientador o psicólogo",
-                    "📓 **Diario Emocional:** Registra emociones 3 veces al día para identificar patrones",
-                    "🌬️ **Regulación Autonómica:** Respiración diafragmática 4-4-4 (inhalar, retener, exhalar)",
-                    "📵 **Reducción de Estímulos:** Limita exposición a redes sociales a 30 min/día"
-                ]
-            },
-            "medio": {
-                "titulo": "🎭 Variabilidad Emocional Moderada",
-                "analisis": f"**Análisis Psicológico:** Fluctuaciones emocionales presentes pero manejables. El estado afectivo muestra inconsistencia que puede relacionarse con factores situacionales del contexto venezolano.\n\n**Bases Neurocientíficas:** La variabilidad en la activación del sistema nervioso autónomo sugiere regulación emocional en proceso de adaptación. La ínsula anterior, clave para la conciencia interoceptiva, puede estar procesando señales contradictorias.",
-                "recomendaciones": [
-                    "🧘 **Mindfulness Básico:** 5 minutos de atención plena al despertar",
-                    "🎵 **Regulación por Música:** Usa música instrumental para estabilizar el estado de ánimo",
-                    "🤝 **Red de Apoyo:** Conversa con alguien de confianza sobre cómo te sientes",
-                    "⏰ **Rutina Estructurada:** La predictibilidad reduce la variabilidad emocional"
-                ]
-            },
-            "bajo": {
-                "titulo": "🎭 Variabilidad Emocional Leve",
-                "analisis": f"**Análisis Psicológico:** Ligeras fluctuaciones emocionales dentro de rangos normales. La variabilidad afectiva leve es adaptativa y no representa riesgo clínico.\n\n**Bases Neurocientíficas:** El sistema límbico muestra respuestas apropiadas al contexto. La regulación prefrontal está activa y funcional.",
-                "recomendaciones": [
-                    "✅ **Autobservación:** Mantén conciencia de tus estados emocionales",
-                    "🌿 **Ejercicio Suave:** Caminata o yoga para anclar el estado de ánimo",
-                    "📚 **Psicoeducación:** Aprende sobre inteligencia emocional",
-                    "🎯 **Metas Pequeñas:** Logros diarios concretos estabilizan el ánimo"
-                ]
-            }
-        },
-
-        "Riesgo neuro-afectivo": {
-            "alto": {
-                "titulo": "🧠 Riesgo Neuro-Afectivo Elevado",
-                "analisis": f"**Análisis Psicológico:** Combinación de indicadores depresivos y lingüísticos negativos que sugiere malestar psicológico significativo. Puntaje de riesgo: {promedio:.2f}/1.0. Requiere atención prioritaria.\n\n**Bases Neurocientíficas:** Los marcadores detectados son consistentes con activación sostenida del eje HPA (hipotálamo-hipófisis-adrenal), reducción en la actividad del núcleo accumbens (sistema de recompensa) y posible disminución de serotonina y dopamina. El hipocampo puede verse afectado por cortisol elevado crónico.",
-                "recomendaciones": [
-                    "🆘 **Intervención Inmediata:** Contacta al departamento de orientación de tu institución",
-                    "👨‍👩‍👧 **Red de Apoyo Familiar:** Comparte cómo te sientes con un adulto de confianza",
-                    "🌅 **Activación Conductual:** Realiza una actividad placentera hoy, aunque sea pequeña",
-                    "📵 **Higiene Digital:** Desconéctate de redes sociales por 48 horas"
-                ]
-            },
-            "medio": {
-                "titulo": "🧠 Indicadores Neuro-Afectivos Moderados",
-                "analisis": f"**Análisis Psicológico:** Señales de malestar emocional moderado con componentes cognitivos negativos. El estado actual es manejable con intervención preventiva adecuada.\n\n**Bases Neurocientíficas:** Posible reducción transitoria en la disponibilidad de neurotransmisores reguladores del ánimo. La neuroplasticidad permite recuperación con intervenciones conductuales apropiadas.",
-                "recomendaciones": [
-                    "🌞 **Exposición Solar:** 20 minutos de luz natural al día activan la serotonina",
-                    "🏃 **Ejercicio Aeróbico:** Incrementa BDNF (factor neurotrófico) y mejora el ánimo",
-                    "🤝 **Conexión Social:** Evita el aislamiento — busca interacción presencial",
-                    "📓 **Registro de Gratitud:** Escribe 3 cosas positivas cada noche"
-                ]
-            },
-            "bajo": {
-                "titulo": "🧠 Indicadores Neuro-Afectivos Leves",
-                "analisis": f"**Análisis Psicológico:** Señales leves de malestar dentro de rangos normales adaptativos. No representa riesgo clínico pero merece atención preventiva.\n\n**Bases Neurocientíficas:** El sistema neuroafectivo muestra funcionamiento dentro de parámetros normales con ligeras fluctuaciones esperables.",
-                "recomendaciones": [
-                    "🌿 **Autocuidado Básico:** Sueño, alimentación e hidratación adecuados",
-                    "🎨 **Actividades Creativas:** El arte y la música regulan el sistema límbico",
-                    "🧠 **Aprendizaje Activo:** Nuevos estímulos cognitivos generan dopamina",
-                    "🤝 **Conexión Significativa:** Cultiva relaciones de calidad sobre cantidad"
-                ]
-            }
-        },
-
-        "Perfil mixto": {
-            "alto": {
-                "titulo": "🌈 Perfil Complejo de Alto Riesgo",
-                "analisis": f"**Análisis Psicológico:** Múltiples factores de riesgo activos sin un patrón dominante claro. La complejidad del perfil sugiere que varios sistemas psicológicos están bajo presión simultáneamente. Puntaje: {promedio:.2f}/1.0.\n\n**Bases Neurocientíficas:** La activación simultánea de múltiples circuitos de estrés (amígdala, eje HPA, sistema simpático) sin un detonante único sugiere sobrecarga sistémica. La corteza prefrontal puede estar comprometida en su función regulatoria.",
-                "recomendaciones": [
-                    "🆘 **Evaluación Profesional:** La complejidad del perfil requiere orientación especializada",
-                    "📋 **Identificación de Estresores:** Lista los 3 principales factores que te generan malestar",
-                    "🌬️ **Regulación Inmediata:** Técnica 5-4-3-2-1 de grounding para el momento presente",
-                    "💤 **Prioriza el Sueño:** El descanso es el primer paso para restablecer el equilibrio"
-                ]
-            },
-            "medio": {
-                "titulo": "🌈 Perfil Mixto Moderado",
-                "analisis": f"**Análisis Psicológico:** Señales mixtas que no configuran un patrón único. Puede indicar un estado de transición emocional o múltiples estresores menores actuando en conjunto.\n\n**Bases Neurocientíficas:** El sistema nervioso está procesando múltiples demandas simultáneas. La respuesta adaptativa está activa pero no desbordada.",
-                "recomendaciones": [
-                    "🎯 **Foco en lo Controlable:** Identifica qué puedes cambiar hoy",
-                    "🧘 **Pausa Activa:** 10 minutos de descanso consciente entre actividades",
-                    "🤝 **Apoyo Social:** Comparte tu estado con alguien de confianza",
-                    "📆 **Organización:** Una agenda clara reduce la sensación de caos"
-                ]
-            },
-            "bajo": {
-                "titulo": "🌈 Perfil Mixto Estable",
-                "analisis": f"**Análisis Psicológico:** Señales variadas pero dentro de rangos saludables. El perfil mixto en riesgo bajo indica buena capacidad de procesamiento emocional ante múltiples estímulos.\n\n**Bases Neurocientíficas:** El sistema nervioso autónomo muestra buena variabilidad y adaptabilidad. La regulación prefrontal está operativa.",
-                "recomendaciones": [
-                    "✅ **Mantén tu Equilibrio:** Continúa con tus estrategias actuales",
-                    "🌟 **Fortalezas:** Identifica y refuerza lo que te funciona bien",
-                    "📈 **Crecimiento:** Explora nuevas herramientas de bienestar",
-                    "🌐 **Comunidad:** Comparte experiencias positivas con otros"
-                ]
+                "analisis": "Análisis Psicológico: Cansancio esperable dada la actividad reciente.",
+                "recomendaciones": ["⏸️ Descanso Preventivo: No esperes al agotamiento total"]
             }
         }
-
     }
     
-    # ================================================================
-    # 6. MOSTRAR RECOMENDACIÓN CORRESPONDIENTE
-    # ================================================================
+    # Fallback genérico para perfiles no mapeados explícitamente arriba
+    base_rec = recomendaciones_profesionales.get(perfil_mapeado, {}).get(
+        riesgo_key.lower(), 
+        {
+            "titulo": f"📊 Evaluación de Perfil: {perfil_mapeado}",
+            "analisis": f"El análisis integrativo presenta un estado afectivo con nivel de riesgo {riesgo_key}.",
+            "recomendaciones": ["Dar seguimiento continuo a través de la plataforma."]
+        }
+    )
+
+    st.markdown(f"### {base_rec['titulo']}")
     
-    if perfil_mapeado in recomendaciones_profesionales:
-        riesgo_normalizado = riesgo.lower() if isinstance(riesgo, str) else "medio"
-        
-        # Determinar clave de riesgo (alto, medio, bajo)
-        if riesgo_normalizado == "alto":
-            riesgo_clave = "alto"
-        elif riesgo_normalizado == "medio":
-            riesgo_clave = "medio"
-        else:
-            riesgo_clave = "bajo"
-        
-        # Obtener recomendación
-        if riesgo_clave in recomendaciones_profesionales[perfil_mapeado]:
-            rec_data = recomendaciones_profesionales[perfil_mapeado][riesgo_clave]
-            
-            # Mostrar título
-            st.markdown(f"### {rec_data['titulo']}")
-            
-            # Mostrar análisis según nivel de riesgo
-            if riesgo_clave == "alto":
-                contenido_html = f"""
-                <div style='background:rgba(255,68,68,0.08);border-left:4px solid #ff4444;
-                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
-                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{md_to_html(rec_data['analisis'])}</p>
-                <hr>
-                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
-                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
-                </div>
-                """
-                st.markdown(contenido_html, unsafe_allow_html=True)
-                    
-            elif riesgo_clave == "medio":
-                contenido_html = f"""
-                <div style='background:rgba(255,170,68,0.08);border-left:4px solid #ffaa44;
-                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
-                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{md_to_html(rec_data['analisis'])}</p>
-                <hr>
-                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
-                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
-                </div>
-                """
-                st.markdown(contenido_html, unsafe_allow_html=True)
-                    
-            else:  # bajo
-                contenido_html = f"""
-                <div style='background:rgba(68,204,68,0.08);border-left:4px solid #44cc44;
-                padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
-                <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
-                <p>{md_to_html(rec_data['analisis'])}</p>
-                <hr>
-                <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
-                <ul>{"".join(f"<li>{r}</li>" for r in rec_data['recomendaciones'])}</ul>
-                </div>
-                """
-                st.markdown(contenido_html, unsafe_allow_html=True)
-        else:
-            st.info(f"**Análisis General:** Perfil '{perfil_mapeado}' con riesgo {riesgo}. Se aplican recomendaciones estándar.")
-    else:
-        st.warning(f"**Nota:** El perfil '{perfil_mapeado}' requiere configuración adicional.")
-    
+    color_border = ries_bg = config_riesgo[riesgo_key]["color"]
+    contenido_html = f"""
+    <div style='background:rgba(255,255,255,0.03);border-left:4px solid {color_border};
+    padding:20px;border-radius:10px;margin:15px 0;color:inherit;'>
+    <p><strong>📋 ANÁLISIS DETALLADO:</strong></p>
+    <p>{base_rec['analisis']}</p>
+    <hr>
+    <p><strong>🎯 RECOMENDACIONES ESPECÍFICAS:</strong></p>
+    <ul>{"".join(f"<li>{r}</li>" for r in base_rec['recomendaciones'])}</ul>
+    </div>
+    """
+    st.markdown(contenido_html, unsafe_allow_html=True)
+
+    # --- RECOMENDACIONES DINÁMICAS BASADAS EN MOTOR DE ANALYTICS ---
+    neurodiv = datos.get("cognitivo", {})
+    nd_score_rep = neurodiv.get("nd_score", 0.0) * 100  # Convertir a escala de 0 a 100
+
+    auto_recs = analytics.generate_recommendations(
+        risk_level=riesgo_key,
+        cognitive_score=nd_score_rep,
+        trend_data={"deterioration": is_deteriorating}
+    )
+
+    if auto_recs:
+        st.markdown("#### 🤖 Sugerencias del Motor Analítico")
+        for rec in auto_recs:
+            st.info(f"👉 {rec}")
+
     st.markdown("---")
     
     # ================================================================
@@ -1677,7 +1248,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
     # ================================================================
     st.subheader("📊 Panel de Métricas Técnicas")
     
-    # Primera fila de métricas
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(
@@ -1686,7 +1256,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             delta="ALTO" if promedio >= 0.65 else "MODERADO" if promedio >= 0.35 else "BAJO",
             delta_color="inverse" if promedio >= 0.65 else "normal"
         )
-    
     with col2:
         st.metric(
             label="Valence (Placer)", 
@@ -1694,7 +1263,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             delta="POSITIVO" if valence > 0.2 else "NEGATIVO" if valence < -0.2 else "NEUTRAL",
             delta_color="normal" if valence > 0.2 else "inverse" if valence < -0.2 else "off"
         )
-    
     with col3:
         st.metric(
             label="Arousal (Activación)", 
@@ -1702,7 +1270,6 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             delta="ALTA" if arousal > 0.7 else "BAJA" if arousal < 0.3 else "MODERADA"
         )
     
-    # Segunda fila de métricas
     col4, col5, col6 = st.columns(3)
     with col4:
         st.metric(
@@ -1711,14 +1278,12 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             delta="ELEVADO" if neg_words >= 3 else "MODERADO" if neg_words >= 1 else "BAJO",
             delta_color="inverse" if neg_words >= 3 else "off"
         )
-    
     with col5:
         st.metric(
             label="Polaridad Textual", 
             value=f"{polarity:.2f}",
             delta="POSITIVA" if polarity > 0.1 else "NEGATIVA" if polarity < -0.1 else "NEUTRAL"
         )
-    
     with col6:
         st.metric(
             label="Subjetividad", 
@@ -1726,12 +1291,9 @@ def show_single_report(riesgo, perfil, detalle_param =None):
             delta="ALTA" if subjectivity > 0.7 else "BAJA" if subjectivity < 0.3 else "MEDIA"
         )
 
-
     # ================================================================
-    # 8b. INDICADORES DE NEURODIVERSIDAD
+    # 8. INDICADORES DE NEURODIVERSIDAD (CONEXIÓN 3: ANALYTICS)
     # ================================================================
-    neurodiv = datos.get("Neurodiv", {})
-    nd_score_rep = neurodiv.get("nd_score", 0.5)
     atencion_rep = neurodiv.get("atencion", 0.5)
     sensibilidad_rep = neurodiv.get("sensibilidad", 0.5)
 
@@ -1744,9 +1306,9 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         with col_n1:
             st.metric(
                 label="Índice Global ND",
-                value=f"{nd_score_rep:.2f}",
-                delta="ELEVADO" if nd_score_rep >= 0.6 else "MODERADO" if nd_score_rep >= 0.4 else "BAJO",
-                delta_color="inverse" if nd_score_rep >= 0.6 else "off"
+                value=f"{neurodiv.get('nd_score', 0.5):.2f}",
+                delta="ELEVADO" if neurodiv.get('nd_score', 0.5) >= 0.6 else "MODERADO" if neurodiv.get('nd_score', 0.5) >= 0.4 else "BAJO",
+                delta_color="inverse" if neurodiv.get('nd_score', 0.5) >= 0.6 else "off"
             )
         with col_n2:
             st.metric(
@@ -1763,11 +1325,11 @@ def show_single_report(riesgo, perfil, detalle_param =None):
                 delta_color="inverse" if sensibilidad_rep >= 0.6 else "off"
             )
 
-        if nd_score_rep >= 0.6:
+        if neurodiv.get('nd_score', 0.5) >= 0.6:
             st.warning("⚠️ Los indicadores sugieren posibles dificultades de procesamiento cognitivo. Se recomienda consulta con especialista para evaluación formal.")
-    
+
     # ================================================================
-    # 9. TEXTO ANALIZADO (SI EXISTE)
+    # 9. TEXTO ANALIZADO
     # ================================================================
     if texto_snippet and texto_snippet.strip() and texto_snippet != "N/A":
         st.markdown("---")
@@ -1779,6 +1341,7 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         </div>
         """, unsafe_allow_html=True)
         st.caption("Texto analizado con NLP para extraer indicadores emocionales y cognitivos.")
+
     # ================================================================
     # 10. DISCLAIMER PROFESIONAL
     # ================================================================
@@ -1794,15 +1357,10 @@ def show_single_report(riesgo, perfil, detalle_param =None):
         color: #ffd966;
     '>
     <strong>⚠️ DECLARACIÓN DE RESPONSABILIDAD PROFESIONAL</strong><br><br>
-    
     Este reporte ha sido generado mediante un sistema automatizado de detección temprana. 
     Tiene un carácter <strong>PREVENTIVO, ORIENTATIVO Y NO DIAGNÓSTICO</strong>.<br><br>
-    
     <strong>NO sustituye</strong> la evaluación, diagnóstico o tratamiento por parte de 
-    un profesional de la salud mental calificado. Si experimentas malestar significativo, 
-    pensamientos de autolesión, o síntomas que interfieran con tu funcionamiento diario, 
-    <strong>busca atención profesional inmediata</strong>.<br><br>
-    
+    un profesional de la salud mental calificado.<br><br>
     <em>Plataforma de Detección Temprana - Versión 3.0 © 2026</em>
     </div>
     """, unsafe_allow_html=True)
@@ -1959,6 +1517,16 @@ def show_panel_docente():
     df_universidad = df_latest[df_latest["nivel"] == "Universidad"].copy()
     df_otros = df_latest[df_latest["nivel"] != "Universidad"].copy()
 
+
+
+   # 3. Configuración del Clustering
+    st.sidebar.subheader("⚙️ Configuración de Clustering")
+    
+    # Selector de número de clusters (grupos de riesgo)
+    num_clusters = st.sidebar.slider("Número de Grupos (K):", min_value=2, max_value=3, value=3)
+
+    st.subheader(f"Grupos de Riesgo (K={num_clusters})")
+
     # ========================
     # CLUSTERING UNIVERSIDAD (CON POMS)
     # ========================
@@ -1996,7 +1564,7 @@ def show_panel_docente():
         X_scaled = scaler.fit_transform(X_uni_weighted)
 
         # 🔥 FIX REAL: K seguro
-        k = min(3, len(X_uni_weighted))
+        k = min(num_clusters, len(X_uni_weighted))
         
         if k < 2:
             df_universidad["cluster"] = -1
@@ -2005,76 +1573,36 @@ def show_panel_docente():
             df_universidad["cluster"] = kmeans.fit_predict(X_scaled)
 
 
-    # ========================
-    # CLUSTERING OTROS (SIN POMS)
-    # ========================
-    features_base = ['puntaje', 'valence', 'arousal', 'palabras_negativas']
-
-    # 🔥 FIX: copy + tipos
-    X_base = df_otros[features_base].fillna(0).copy()
-    X_base = X_base.apply(pd.to_numeric, errors="coerce").fillna(0)
-
-    if X_base.var().sum() == 0 or len(X_base) < 2:
-        st.warning("Datos insuficientes o constantes en niveles básicos → clustering no significativo")
-        df_otros["cluster"] = -1
-    else:
-
-        X_base_weighted = X_base.copy()
-
-        for col, w in {
-            "puntaje": 2.0,
-            "valence": 2.0,
-            "arousal": 2.0,
-            "palabras_negativas": 1.2
-        }.items():
-            if col in X_base_weighted.columns:
-                X_base_weighted[col] = X_base_weighted[col] * w
-
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X_base_weighted)
-
-        # 🔥 FIX REAL: K seguro
-        k = min(3, len(X_base_weighted))
-
-        if k < 2:
-            df_otros["cluster"] = -1
-        else:
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-            df_otros["cluster"] = kmeans.fit_predict(X_scaled)
-
 
     # ========================
     # UNIR RESULTADOS
     # ========================
 
-    df_final = pd.concat([df_universidad, df_otros], ignore_index=True)
-
-    # 🔥 MAPEO CLUSTER → RIESGO REAL
-    CLUSTER_TO_RISK = {
-        0: "bajo",
-        1: "medio",
-        2: "alto"
-    }
-
-    df_final["riesgo"] = df_final["cluster"].map(CLUSTER_TO_RISK)
-    df_final = apply_riesgo_labels(df_final)
+    df_final = df_universidad.copy()
 
     # ========================
     # 🔥 INTERPRETACIÓN REAL DE CLUSTERS
     # ========================
 
-    # 1. Calcular riesgo promedio por cluster
-    cluster_risk = df_final.groupby("cluster")["puntaje"].mean().sort_values()
+    cluster_risk = (
+        df_final.groupby("cluster")["puntaje"]
+        .mean()
+        .sort_values()
+    )
 
-    # 2. Ordenar clusters de menor → mayor riesgo
     ordered_clusters = cluster_risk.index.tolist()
 
-    # 3. Asignar etiquetas REALES
-    labels_ordered = [
-        "🟢 Estables",
-        "🟡 Vulnerables",
-        "🔴 Críticos"
-    ]
+    if num_clusters == 2:
+        labels_ordered = [
+            "🟢 Estables",
+            "🔴 Críticos"
+        ]
+    else:
+        labels_ordered = [
+            "🟢 Estables",
+            "🟡 Vulnerables",
+            "🔴 Críticos"
+        ]
 
     cluster_labels = {
         cluster_id: labels_ordered[i]
@@ -2091,20 +1619,7 @@ def show_panel_docente():
         st.warning("No hay datos suficientes después del clustering")
         return
 
-    # DEBUG (opcional)
-    st.write("Total registros:", len(df_latest))
-    st.write("Universidad:", len(df_universidad))
-    st.write("Otros:", len(df_otros))
 
-
-
-    # 3. Configuración del Clustering
-    st.sidebar.subheader("⚙️ Configuración de Clustering")
-    
-    # Selector de número de clusters (grupos de riesgo)
-    num_clusters = st.sidebar.slider("Número de Grupos (K):", min_value=2, max_value=6, value=3)
-
-    st.subheader(f"Grupos de Riesgo (K={num_clusters})")
 
     # 5. Visualización (Reducción de dimensionalidad con PCA para Plotly)
     features_all = ['puntaje', 'valence', 'arousal', 'palabras_negativas']
@@ -2126,10 +1641,16 @@ def show_panel_docente():
     pca_df['puntaje'] = df_final['puntaje'].values
 
     pca_df = pca_df.merge(
-        df_final[["usuario_id", "riesgo_label"]],
-        on="usuario_id",
-        how="left"
+    df_final[["usuario_id", "riesgo"]],
+    on="usuario_id",
+    how="left"
     )
+
+    pca_df["riesgo_label"] = pca_df["riesgo"].map({
+        "Bajo": "🟢 Bajo",
+        "Medio": "🟡 Medio",
+        "Alto": "🔴 Alto"
+    })
     
     # Scatter plot de Clustering (PCA)
     fig_pca = px.scatter(
@@ -2196,7 +1717,7 @@ def show_panel_docente():
             **Explicación de las columnas:**
             
             - **cluster**: Grupo identificado por el algoritmo
-            - **puntaje**: Puntaje de riesgo combinado (1-5, mayor = más riesgo)
+            - **puntaje**: Puntaje de riesgo combinado (0-1, mayor = más riesgo)
             - **tension**: Subescala de tensión POMS (0-1, mayor = más tensión)
             - **fatigue**: Subescala de fatiga POMS (0-1, mayor = más fatiga)  
             - **valence**: Placer/Displacer (-1 a +1, positivo = placentero)
@@ -2206,9 +1727,11 @@ def show_panel_docente():
             - **total_miembros**: Número de usuarios distintos en el grupo
             
             **Interpretación:**
-            - Grupos con **puntaje > 4.0** requieren atención prioritaria
-            - **tension > 0.6** indica estrés significativo
-            - **fatigue > 0.7** sugiere agotamiento importante
+            - **puntaje ≥ 0.65**: riesgo alto
+            - **0.40 ≤ puntaje < 0.65**: riesgo medio
+            - **puntaje < 0.40**: riesgo bajo
+            - **tension > 0.6**: tensión elevada
+            - **fatigue > 0.7**: fatiga elevada
             - **valence negativo** indica estado de ánimo displacentero
             """)
 
@@ -2252,13 +1775,30 @@ def show_dashboard_historico():
     df["respuestas_json"] = df["respuestas"].apply(safe_json_load)
     df["fecha_dt"] = pd.to_datetime(df["fecha"])
     
-    # Extraer información estructurada
-    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("Perfil", "No definido"))
-    df["valence"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
-    df["arousal"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
-    df["poms_tension"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("tension", 0))
-    df["poms_fatigue"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("fatigue", 0))
-    df["poms_vigor"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("vigor", 0))
+    # Extraer información estructurada según el contrato actual de datos
+    df["perfil"] = df["detalle_json"].apply(
+    lambda x: (x or {}).get("resultado", {}).get("perfil", "No definido")
+    )
+
+    df["valence"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("va", {}).get("valence", 0.0)
+    )
+
+    df["arousal"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("va", {}).get("arousal", 0.5)
+    )
+
+    df["poms_tension"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("tension", np.nan)
+    )
+
+    df["poms_fatigue"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("fatiga", np.nan)
+    )
+
+    df["poms_vigor"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("vigor", np.nan)
+    )
     
     # Extraer datos de la encuesta base
     def extract_base_value(respuestas, key):
@@ -2275,33 +1815,23 @@ def show_dashboard_historico():
     df["base_motivacion"] = df["respuestas_json"].apply(lambda x: extract_base_value(x, "social"))
     df["base_animo"]      = df["respuestas_json"].apply(lambda x: extract_base_value(x, "animo"))
     
-    # ===== FILTROS (MODIFICADO) =====
+    # ===== FILTROS DE ANÁLISIS =====
     st.sidebar.subheader("🎛️ Filtros de Análisis")
-    
-    # Nuevo filtro de Usuario ID y nivel en columnas para mejor UX
-    col_u, col_n = st.sidebar.columns(2)
-    
-    with col_u:
-        # Nuevo: Filtro de Usuario ID (clave para la tendencia individual)
-        usuarios_ids = ["Todos"] + sorted(df["usuario_id"].unique().tolist())
-        usuario_seleccionado = st.selectbox("Filtrar Usuario ID:", usuarios_ids)
 
-    with col_n:
-        # Filtro por nivel
-        niveles = ["Todos"] + list(df["usuario_nivel"].unique())
-        nivel_seleccionado = st.selectbox("Filtrar Nivel:", niveles)
-    
+    niveles = ["Todos"] + sorted(df["usuario_nivel"].dropna().unique().tolist())
+    nivel_seleccionado = st.sidebar.selectbox(
+        "Filtrar Nivel:",
+        niveles
+    )
+
     df_filtered = df.copy()
 
-    # Aplicar filtro de Usuario y Nivel
-    if usuario_seleccionado != "Todos":
-        df_filtered = df_filtered[df_filtered["usuario_id"] == usuario_seleccionado]
-        
     if nivel_seleccionado != "Todos":
-        df_filtered = df_filtered[df_filtered["usuario_nivel"] == nivel_seleccionado]
-        
-    # El resto de los filtros usan el df_filtered
-    df = df_filtered 
+        df_filtered = df_filtered[
+            df_filtered["usuario_nivel"] == nivel_seleccionado
+        ]
+
+    df = df_filtered
     
     if df.empty:
         st.warning("No hay datos para la combinación de filtros seleccionada.")
@@ -2311,7 +1841,7 @@ def show_dashboard_historico():
     fecha_min = df["fecha_dt"].min()
     fecha_max = df["fecha_dt"].max()
     
-    if fecha_min is pd.NaT: # Pequeña validación si el filtro de usuario/nivel deja el DF vacío
+    if pd.isna(fecha_min): # Pequeña validación si el filtro de usuario/nivel deja el DF vacío
          st.warning("No hay datos en el rango seleccionado después de aplicar el filtro de usuario/nivel.")
          return
     
@@ -2334,8 +1864,10 @@ def show_dashboard_historico():
     
 
     if len(df) < 2:
-        st.scatter_chart(df, x="fecha", y="puntaje")
-        st.caption("📌 Estado actual del estudiante")
+        st.info(
+            "No hay suficientes evaluaciones para mostrar una evolución histórica. "
+            "Se requiere más de una evaluación."
+        )
         return
     
     # ===== EVOLUCIÓN GENERAL (Se añade el nombre del usuario al título) =====
@@ -2360,12 +1892,12 @@ def show_dashboard_historico():
                          "valence_promedio", "arousal_promedio", "num_encuestas"]
     
     # Determinar el título dinámico
-    title_suffix = f" (Usuario: {usuario_seleccionado})" if usuario_seleccionado != "Todos" else ""
+    title_suffix = f" (Nivel: {nivel_seleccionado})" if nivel_seleccionado != "Todos" else ""
 
     # Gráfico de evolución del puntaje
     fig_puntaje = px.line(
         df_diario, x="fecha", y="puntaje_promedio",
-        title=f"📈 Evolución del Puntaje de Riesgo Promedio{title_suffix}", # <--- Título dinámico
+        title=f"📈 Evolución del Puntaje de Bienestar/Riesgo Promedio{title_suffix}", # <--- Título dinámico
         labels={"fecha": "Fecha", "puntaje_promedio": "Puntaje Promedio"},
         markers=True
     )
@@ -2373,7 +1905,7 @@ def show_dashboard_historico():
     fig_puntaje.add_hline(y=0.40, line_dash="dash", line_color="orange", annotation_text="Límite Riesgo Medio")
     st.plotly_chart(fig_puntaje, use_container_width=True)
 
-    st.caption("La línea muestra cómo ha evolucionado el riesgo promedio. Por encima de 0.65 es zona de alerta.")
+    st.caption("La línea muestra la evolución del puntaje promedio. " "Los umbrales de 0.40 y 0.65 permiten identificar zonas de seguimiento y alerta.")
     with st.expander("¿Cómo leer este gráfico?"):
         st.markdown("""
         Muestra la evolución del puntaje de riesgo promedio a lo largo del tiempo.
@@ -2466,11 +1998,27 @@ def show_dashboard_historico():
     st.header("📈 Análisis de Tendencias")
     
     if len(df_diario) >= 2:
-        # Calcular tendencias
-        tendencia_puntaje = (df_diario["puntaje_promedio"].iloc[-1] - df_diario["puntaje_promedio"].iloc[0]) / len(df_diario)
-        tendencia_estres = (df_diario["estres_promedio"].iloc[-1] - df_diario["estres_promedio"].iloc[0]) / len(df_diario)
-        tendencia_motivacion = (df_diario["motivacion_promedio"].iloc[-1] - df_diario["motivacion_promedio"].iloc[0]) / len(df_diario)
-        
+        # Calcular tendencias por día real transcurrido
+        dias_transcurridos = max(
+            1,
+            (df_diario["fecha"].max() - df_diario["fecha"].min()).days
+        )
+
+        tendencia_puntaje = (
+            df_diario["puntaje_promedio"].iloc[-1]
+            - df_diario["puntaje_promedio"].iloc[0]
+        ) / dias_transcurridos
+
+        tendencia_estres = (
+            df_diario["estres_promedio"].iloc[-1]
+            - df_diario["estres_promedio"].iloc[0]
+        ) / dias_transcurridos
+
+        tendencia_motivacion = (
+            df_diario["motivacion_promedio"].iloc[-1]
+            - df_diario["motivacion_promedio"].iloc[0]
+        ) / dias_transcurridos
+
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -2509,7 +2057,12 @@ def show_dashboard_historico():
         st.metric("Período Analizado", f"{(df['fecha_dt'].max() - df['fecha_dt'].min()).days} días")
     
     with col2:
-        riesgo_actual = df[df["fecha_dt"] == df["fecha_dt"].max()]["riesgo"].value_counts()
+        fecha_actual = df["fecha_dt"].dt.date.max()
+
+        riesgo_actual = df[
+            df["fecha_dt"].dt.date == fecha_actual
+        ]["riesgo"].value_counts()
+
         if "Alto" in riesgo_actual:
             st.metric("Riesgo Alto Actual", riesgo_actual["Alto"])
         else:
@@ -2548,16 +2101,26 @@ def show_dashboard_profesional():
     df["perfil"] = df["detalle_json"].apply(lambda x: x.get("resultado", {}).get("perfil", "No definido"))
     
     # Extracción de métricas
-    df["valence"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
-    df["arousal"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
-    df["tension"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("tension", 0))
-    df["fatigue"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("fatigue", 0))
-    df["vigor"] = df["detalle_json"].apply(lambda x: x.get("POMS", {}).get("vigor", 0))
-    
-    # Extraer indicadores de neurodiversidad si existen
-    df["atencion"] = df["detalle_json"].apply(lambda x: x.get("Neurodiv", {}).get("atencion", 0.5))
-    df["sensibilidad"] = df["detalle_json"].apply(lambda x: x.get("Neurodiv", {}).get("sensibilidad", 0.5))
+    df["valence"] = df["detalle_json"].apply(
+    lambda x: (x or {}).get("va", {}).get("valence", 0)
+    )
 
+    df["arousal"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("va", {}).get("arousal", 0.5)
+    )
+
+    df["tension"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("tension", np.nan)
+    )
+
+    df["fatigue"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("fatiga", np.nan)
+    )
+
+    df["vigor"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("poms", {}).get("vigor", np.nan)
+    )
+    
     # ================================================================
     # FILTROS
     # ================================================================
@@ -2648,7 +2211,7 @@ def show_dashboard_profesional():
             df, x="valence", y="arousal",
             color="riesgo_label",
             color_discrete_map=RISK_COLORS,
-            hover_data=["perfil", "usuario_id"],
+            hover_data=["perfil"],
             title="Mapa emocional del grupo: ¿cómo se sienten y qué tanta energía tienen?",
             range_x=[-1.1, 1.1],
             range_y=[-0.1, 1.1]
@@ -2676,7 +2239,16 @@ def show_dashboard_profesional():
     # Gráfico de Radar POMS Promedio por Nivel
     with col4:
         # Agrupamos por Nivel para el radar
-        poms_group = df.groupby("nivel")[["tension", "fatigue", "vigor"]].mean().reset_index()
+        df_poms = df[df["nivel"] == "Universidad"].copy()
+
+        if df_poms.empty:
+            st.info("No hay datos POMS disponibles para Universidad.")
+        else:
+            poms_group = (
+                df_poms.groupby("nivel")[["tension", "fatigue", "vigor"]]
+                .mean()
+                .reset_index()
+            )
         poms_group = poms_group.melt(id_vars='nivel', var_name='Métrica', value_name='Valor')
         
         fig_radar = px.line_polar(
@@ -2715,37 +2287,6 @@ def show_dashboard_profesional():
             *Un triángulo grande en Tensión y Fatiga con un vértice pequeño en Vigor es señal de alerta grupal.*
             """)
 
-    # ================================================================
-    # 3. Indicadores Adicionales (Neurodiversidad)
-    # ================================================================
-    st.header("3. Indicadores de Procesamiento Cognitivo (Promedio)")
-    
-    neuro_metrics = ["atencion", "sensibilidad"] # Se pueden añadir más si existen en el JSON
-    
-    if all(m in df.columns for m in neuro_metrics):
-        neuro_group = df.groupby("nivel")[neuro_metrics].mean().reset_index()
-        fig_neuro = px.bar(
-            neuro_group, x="nivel", y=neuro_metrics,
-            barmode="group",
-            title="¿Qué tan frecuentes son las dificultades de atención y sensibilidad por nivel?",
-            labels={"value": "Promedio (0 a 1)", "variable": "Indicador"}
-        )
-        st.plotly_chart(fig_neuro, use_container_width=True)
-        st.caption("⚠️ Estos indicadores son orientativos. Valores altos sugieren posibles dificultades de procesamiento, no diagnósticos.")
-        with st.expander("¿Cómo leer este gráfico?"):
-            st.markdown("""
-            Muestra el promedio de dos indicadores relacionados con procesamiento cognitivo:
-            
-            - **Atención**: frecuencia de dificultades para mantener concentración sostenida.
-            - **Sensibilidad**: nivel de sensibilidad a estímulos sensoriales como ruidos o luces.
-            
-            Escala de 0 a 1 — valores por encima de 0.6 merecen atención del orientador.
-            
-            *Estos indicadores NO constituyen diagnóstico de neurodiversidad. Son señales preventivas.*
-            """)
-    else:
-        st.info("Los indicadores de procesamiento cognitivo (atención/sensibilidad) no están disponibles en todos los datos.")
-
     st.markdown("---")
     st.success(f"✅ Dashboard profesional cargado con {len(df)} resultados analizados.")
 
@@ -2783,39 +2324,55 @@ def show_alertas_inteligentes():
     # Extraer el texto libre de la encuesta para contextualizar la alerta
     df["texto"] = df["respuestas_json"].apply(lambda x: x.get("texto", ""))
     
-    # Lógica de clasificación de la Causa Principal
-    causas = []
-    for d in df["detalle_json"]:
-        prom = float(d.get("resultado", {}).get("puntaje", 0))
-        neg = d.get("emocional", {}).get("neg_words", 0)
-        subj = d.get("emocional", {}).get("subjectivity", 0)
+    # Señales observadas asociadas al caso.
+    # No representan diagnóstico ni causa clínica.
+    def obtener_senales(d):
+        emocional = (d or {}).get("emocional", {})
 
-        # Criterios para determinar la causa más probable de la alerta
-        if neg >= 3 and prom > 4.2:
-            causas.append("🚨 Estrés + Lenguaje Crítico")
-        elif prom >= 4.5:
-            causas.append("📈 Riesgo por Estrés/Ansiedad General")
-        elif neg >= 4:
-            causas.append("💬 Lenguaje Crítico Intenso")
-        elif subj >= 0.75:
-            causas.append("🧠 Alta Subjetividad Emocional")
-        else:
-            causas.append("📊 Riesgo Alto - Revisar Detalle")
+        neg = emocional.get("neg_words", 0)
 
-    df["Causa Principal"] = causas
+        try:
+            neg = float(neg)
+        except (TypeError, ValueError):
+            neg = 0
+
+        señales = []
+
+        if neg >= 3:
+            señales.append("Lenguaje con mayor presencia de términos negativos")
+
+        if not señales:
+            señales.append("Revisar indicadores del reporte")
+
+        return " | ".join(señales)
+
+
+    df["Señales observadas"] = df["detalle_json"].apply(obtener_senales)
     
     st.markdown("---")
     st.markdown(f"**{len(df)}** casos detectados en **Riesgo Alto** que requieren atención inmediata.")
 
     # Tabla de resumen de los casos en riesgo alto
-    st.dataframe(df[["resultado_id", "usuario_id", "nivel", "puntaje", "Causa Principal", "fecha", "riesgo_label"]].rename(
-        columns={
-            "resultado_id": "ID Resultado", 
-            "usuario_id": "Usuario ID", 
-            "puntaje": "Puntuación", 
-            "fecha": "Fecha"
-        }
-    ), use_container_width=True)
+    st.dataframe(
+        df[
+            [
+                "resultado_id",
+                "nivel",
+                "puntaje",
+                "Señales observadas",
+                "fecha",
+                "riesgo_label"
+            ]
+        ].rename(
+            columns={
+                "resultado_id": "ID Resultado",
+                "puntaje": "Puntuación",
+                "fecha": "Fecha"
+            }
+        ),
+        use_container_width=True,
+        hide_index=True
+    )
 
     st.markdown("---")
     st.subheader("🔍 Detalle del Caso Más Crítico")
@@ -2826,7 +2383,11 @@ def show_alertas_inteligentes():
     det = caso["detalle_json"]
     
     # Se usa show_single_report para mostrar la información estructurada
-    with st.expander(f"Reporte completo: ID {caso['resultado_id']} | Usuario: {caso['usuario_id']} | Puntaje: {caso['puntaje']:.2f}", expanded=True):
+    with st.expander(
+        f"Reporte completo: ID {caso['resultado_id']} | "
+        f"Puntaje: {caso['puntaje']:.2f}",
+        expanded=True
+    ):
          show_single_report(caso['riesgo'], caso['perfil'], det)
          
     st.markdown("---")
@@ -2929,9 +2490,17 @@ def generar_pdf_profesional_bytes(usuario_id=None):
     df["respuestas_json"] = df["respuestas"].apply(safe_json_load)
     
     # Extraer información importante
-    df["perfil"] = df["detalle_json"].apply(lambda x: x.get("Perfil", "No definido"))
-    df["valence"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("valence", 0))
-    df["arousal"] = df["detalle_json"].apply(lambda x: x.get("VA", {}).get("arousal", 0.5))
+    df["perfil"] = df["detalle_json"].apply(
+    lambda x: (x or {}).get("resultado", {}).get("perfil", "No definido")
+    )
+
+    df["valence"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("va", {}).get("valence", np.nan)
+    )
+
+    df["arousal"] = df["detalle_json"].apply(
+        lambda x: (x or {}).get("va", {}).get("arousal", np.nan)
+    )
     
     # Crear PDF
     buffer = io.BytesIO()
@@ -2984,15 +2553,25 @@ def generar_pdf_profesional_bytes(usuario_id=None):
     y_pos -= 15
     
     poms_promedios = {}
-    for sub in ['tension', 'fatigue', 'vigor']:
+
+    for sub in ["tension", "fatigue", "vigor"]:
         valores = []
-        for detalle in df['detalle_json']:
-            poms_val = detalle.get('POMS', {}).get(sub, 0)
-            if poms_val is not None:
-                valores.append(poms_val)
+
+        for detalle in df["detalle_json"]:
+            poms_val = (detalle or {}).get("poms", {}).get(sub, np.nan)
+
+            if pd.notna(poms_val):
+                valores.append(float(poms_val))
+
         if valores:
             poms_promedios[sub] = sum(valores) / len(valores)
-            c.drawString(80, y_pos, f"{sub.capitalize()}: {poms_promedios[sub]:.3f}")
+
+            c.drawString(
+                80,
+                y_pos,
+                f"{sub.capitalize()}: {poms_promedios[sub]:.3f}"
+            )
+
             y_pos -= 12
     
     # Valence-Arousal promedio
@@ -3076,22 +2655,20 @@ def generar_excel_completo_bytes():
         
         datos_procesados.append({
             "id": row["id"],
-            "usuario_id": row["usuario_id"],
             "rol": row["rol"],
             "edad": row["edad"],
             "nivel": row["usuario_nivel"],
             "fecha": row["fecha"],
             "puntaje": row["puntaje"],
             "riesgo": row["riesgo"],
-            "perfil": detalle.get("Perfil", "No definido"),
-            "valence": detalle.get("VA", {}).get("valence", 0),
-            "arousal": detalle.get("VA", {}).get("arousal", 0.5),
-            "poms_tension": detalle.get("POMS", {}).get("tension", 0),
-            "poms_fatigue": detalle.get("POMS", {}).get("fatigue", 0),
-            "poms_vigor": detalle.get("POMS", {}).get("vigor", 0),
-            "polarity": detalle.get("Polarity", 0),
-            "neg_words": detalle.get("NegWords", 0),
-            "texto_snippet": detalle.get("TextoSnippet", "")
+            "perfil": (detalle or {}).get("resultado", {}).get("perfil", "No definido"),
+            "valence": (detalle or {}).get("va", {}).get("valence", np.nan),
+            "arousal": (detalle or {}).get("va", {}).get("arousal", np.nan),
+            "poms_tension": (detalle or {}).get("poms", {}).get("tension", np.nan),
+            "poms_fatigue": (detalle or {}).get("poms", {}).get("fatigue", np.nan),
+            "poms_vigor": (detalle or {}).get("poms", {}).get("vigor", np.nan),
+            "polarity": (detalle or {}).get("emocional", {}).get("polarity", np.nan),
+            "neg_words": (detalle or {}).get("emocional", {}).get("neg_words", np.nan),
         })
     
     df_analisis = pd.DataFrame(datos_procesados)
@@ -3257,10 +2834,9 @@ def show_acerca():
     with st.expander("Ver glosario de términos"):
         st.markdown("""
         **POMS (Profile of Mood States)**
-        Escala psicométrica validada que mide cinco estados afectivos: Tensión, 
-        Depresión, Fatiga, Vigor y Cólera. En esta plataforma se usa una versión 
-        reducida de 4 subescalas adaptada al contexto educativo.
-
+        Instrumento psicométrico utilizado para evaluar diferentes estados afectivos.
+        En esta plataforma se utiliza una versión reducida adaptada al contexto educativo,
+        considerando las subescalas de Tensión, Fatiga y Vigor.
         ---
 
         **Valence-Arousal (VA)**
@@ -3314,10 +2890,12 @@ def show_acerca():
     <div style='background:#2d2d00;border:1px solid #ffaa00;border-radius:8px;
     padding:15px;margin:10px 0;color:#ffd966;'>
     <strong>Principios éticos del sistema:</strong><br><br>
-    • <strong>Anonimato:</strong> ningún dato permite identificar individualmente al estudiante.<br>
-    • <strong>Voluntariedad:</strong> la participación es libre y reversible en todo momento.<br>
+    • <strong>Protección de identidad:</strong> el sistema utiliza identificadores internos para gestionar
+    los registros y evita exponer directamente datos personales en los análisis.<br>
+    • <strong>Voluntariedad:</strong> la participación debe realizarse de manera libre e informada.<br>
     • <strong>No diagnóstico:</strong> el sistema es preventivo y orientativo, nunca clínico.<br>
-    • <strong>Confidencialidad:</strong> los datos se almacenan localmente y no se comparten con terceros.<br>
+    • <strong>Confidencialidad:</strong> los datos se gestionan mediante almacenamiento local y
+    se aplican medidas orientadas a restringir su acceso.<br>
     • <strong>Beneficencia:</strong> el único propósito es el bienestar del estudiante.
     </div>
     """, unsafe_allow_html=True)
@@ -3332,8 +2910,9 @@ def show_acerca():
         st.markdown("""
         <div style='background:rgba(255,255,255,0.05);padding:20px;border-radius:10px;text-align:center;'>
         <strong>Eliezer Eduardo Chirinos Leal</strong><br><br>
-        <em>TSU en Informática</em><br>
-        Sección C5-1
+        <strong>Alejandro José Covarrubias Cadenas</strong><br><br>
+        <em>Informática</em><br>
+        Sección C6-1
         <br><br>
         <br>
         </div>
@@ -3341,8 +2920,8 @@ def show_acerca():
     with col2:
         st.markdown("""
         <div style='background:rgba(255,255,255,0.05);padding:20px;border-radius:10px;text-align:center;'>
-        <strong>Tutora Académico</strong><br><br>
-        Ing. Agnaid Zabala<br><br>
+        <strong>Tutor Académico</strong><br><br>
+        Ing. Luis Ugaz<br><br>
         <strong>Institución</strong><br>
         READIC-UNIR<br>
         </div>
@@ -3397,7 +2976,7 @@ with st.sidebar:
         key="rol_seleccionado"
     )
 
-    # 🔥 NUEVO: sincronizar con router
+    # 🔥 Sincronizar con router
     st.session_state.route["rol"] = rol_seleccionado
     
     # Navegación para Estudiante
@@ -3426,7 +3005,11 @@ with st.sidebar:
         if not st.session_state.get('docente_activo'):
             clave = st.text_input("🔑 Clave de acceso docente:", type="password")
             if st.button("🔓 Acceder como docente", use_container_width=True):
-                if clave == os.getenv("CLAVE_DOCENTE", "admin123"):
+                clave_docente = os.getenv("CLAVE_DOCENTE")
+
+                if not clave_docente:
+                    st.error("El acceso docente no está configurado correctamente.")
+                elif clave == clave_docente:
                     st.session_state.docente_activo = True
                     st.success("Acceso concedido")
                     st.rerun()
@@ -3462,14 +3045,25 @@ with st.sidebar:
                 set_route("acerca")
                 st.rerun()
 
+            st.markdown("---")
+            # 🔥 NUEVO: Botón de cierre de sesión para Docente
+            if st.button("🔒 Cerrar sesión", use_container_width=True):
+                logout()
+                st.rerun()
+
     elif rol_seleccionado == "Psicólogo":
         st.subheader("🧠 Área de Psicólogo")
 
         if not st.session_state.get('psicologo_activo'):
             clave_p = st.text_input("🔑 Clave de acceso:", type="password")
             if st.button("🔓 Acceder como psicólogo", use_container_width=True):
-                if clave_p == os.getenv("CLAVE_PSICOLOGO", "psico123"):
+                clave_psicologo = os.getenv("CLAVE_PSICOLOGO")
+
+                if not clave_psicologo:
+                    st.error("El acceso de psicología no está configurado correctamente.")
+                elif clave_p == clave_psicologo:
                     st.session_state.psicologo_activo = True
+                    st.success("Acceso concedido")
                     st.rerun()
                 else:
                     st.error("Clave incorrecta")
@@ -3491,6 +3085,11 @@ with st.sidebar:
                 set_route("acerca")
                 st.rerun()
 
+            st.markdown("---")
+            # 🔥 NUEVO: Botón de cierre de sesión para Psicólogo
+            if st.button("🔒 Cerrar sesión", use_container_width=True):
+                logout()
+                st.rerun()
 
 # ================================================================
 # SERVICIO PRINCIPAL DE PROCESAMIENTO DE ENCUESTA
@@ -3507,9 +3106,10 @@ def process_survey_service(nivel, edad, respuestas):
 
     # 3. POMS si aplica
     poms_scores = {
-        "tension": 0,
-        "fatigue": 0,
-        "vigor": 0
+        "tension": 0.0,
+        "depresion": 0.0,
+        "fatiga": 0.0,
+        "vigor": 0.0
     }
     if nivel == "Universidad":
         poms_respuestas = {
@@ -3658,7 +3258,7 @@ if rol_seleccionado == "Estudiante":
             with col2:
                 nivel = st.selectbox(
                     "Nivel educativo",
-                        ["Primaria", "Secundaria", "Universidad"],
+                        ["Universidad"],
                 index=0,
                 key="nivel_usuario"
                 )
@@ -3704,8 +3304,8 @@ if rol_seleccionado == "Estudiante":
         if not uid:
             st.info("Realiza tu primera evaluación para ver tu historial aquí.")
             if st.button("📝 Comenzar evaluación", key="btn_hist_nueva"):
-                st.session_state.menu_estudiante = "Registrar encuesta"
                 st.session_state.consentimiento = False
+                set_route("registro")
                 st.rerun()
         else:
             df_hist = fetch_historial_usuario(uid, include_respuestas_y_nivel=False)
@@ -3713,8 +3313,8 @@ if rol_seleccionado == "Estudiante":
             if df_hist.empty:
                 st.info("Aún no tienes evaluaciones registradas.")
                 if st.button("📝 Hacer primera evaluación", key="btn_hist_empty"):
-                    st.session_state.menu_estudiante = "Registrar encuesta"
                     st.session_state.consentimiento = False
+                    set_route("registro")
                     st.rerun()
             else:
                 # Procesar datos
@@ -3820,10 +3420,13 @@ if rol_seleccionado == "Estudiante":
                 st.rerun()
             st.stop()
             
-        uid = data['uid']
-        
-        # 1. Mostrar reporte individual
-        show_single_report(data['riesgo'], data['perfil'], data['detalle'])
+        uid = data["uid"]
+
+        show_single_report(
+            riesgo=data["riesgo"],
+            perfil=data["perfil"],
+            resultado=data
+        )
         
         # 2. Generar alertas inteligentes
         alerts = generate_smart_alerts(uid)
@@ -3843,15 +3446,28 @@ if rol_seleccionado == "Estudiante":
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📊 Ver mi historial de evaluaciones", use_container_width=True, key="btn_historial_res"):
-                st.session_state.menu_estudiante = "Ver historial"
-                if 'last_report_data' in st.session_state: del st.session_state.last_report_data
+            if st.button(
+                "📊 Ver mi historial de evaluaciones",
+                use_container_width=True,
+                key="btn_historial_res"
+            ):
+                if "last_report_data" in st.session_state:
+                    del st.session_state.last_report_data
+
+                set_route("historial")
                 st.rerun()
         with col2:
-            if st.button("📝 Comenzar nueva evaluación", use_container_width=True, key="btn_nueva_res"):
+            if st.button(
+                "📝 Comenzar nueva evaluación",
+                use_container_width=True,
+                key="btn_nueva_res"
+            ):
                 st.session_state.consentimiento = False
-                st.session_state.menu_estudiante = "Registrar encuesta"
-                if 'last_report_data' in st.session_state: del st.session_state.last_report_data
+
+                if "last_report_data" in st.session_state:
+                    del st.session_state.last_report_data
+
+                set_route("registro")
                 st.rerun()
 
     elif st.session_state.menu_estudiante == "Información":
@@ -3976,17 +3592,17 @@ elif rol_seleccionado == "Docente":
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("📊 Ver Dashboard Profesional", use_container_width=True):
-                    st.session_state.menu_docente = "Dashboard profesional"
+                    set_route("dashboard_prof")
                     st.rerun()
                 if st.button("📈 Ver Dashboard Histórico", use_container_width=True):
-                    st.session_state.menu_docente = "Dashboard histórico"
+                    set_route("dashboard_hist")
                     st.rerun()
             with col2:
                 if st.button("🧠 Análisis de Clustering", use_container_width=True):
-                    st.session_state.menu_docente = "Clustering"
+                    set_route("clustering")
                     st.rerun()
                 if st.button("🚨 Ver Alertas", use_container_width=True):
-                    st.session_state.menu_docente = "Alertas inteligentes"
+                    set_route("alertas")
                     st.rerun()
         
         elif st.session_state.menu_docente == "Clustering":
@@ -4082,27 +3698,58 @@ elif rol_seleccionado == "Psicólogo":
                 ids = usuarios_disponibles["id"].tolist()
                 uid_sel = st.selectbox("Seleccionar ID de estudiante:", ids)
 
-                df_ind = fetch_historial_usuario(uid_sel, include_respuestas_y_nivel=True)
-
-                df_ind["fecha_dt"] = pd.to_datetime(df_ind["fecha"], errors="coerce")
+                df_ind = fetch_historial_usuario(
+                    uid_sel,
+                    include_respuestas_y_nivel=True
+                )
 
                 if df_ind.empty:
                     st.info("Este estudiante no tiene evaluaciones registradas.")
                 else:
-                    df_ind["data"] = df_ind["detalle"].apply(safe_json_load)
-
-                    df_ind["respuestas_json"] = df_ind["respuestas"].apply(safe_json_load)
-
-                    df_ind["texto_libre"] = df_ind["respuestas_json"].apply(
-                        lambda x: x.get("texto", "")
+                    df_ind["fecha_dt"] = pd.to_datetime(
+                        df_ind["fecha"],
+                        errors="coerce"
                     )
 
 
-                    df_ind["perfil"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("perfil") or x.get("Perfil", "N/A"))
-                    df_ind["riesgo"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("riesgo"))
-                    df_ind["puntaje"] = df_ind["data"].apply(lambda x: x.get("resultado", {}).get("puntaje"))
+                    # ── Extraer información estructurada ────────────────────────
+                    def parse_json_field(value):
+                        if isinstance(value, str):
+                            try:
+                                return json.loads(value)
+                            except (json.JSONDecodeError, TypeError):
+                                return {}
+                        return value if isinstance(value, dict) else {}
 
-                    df_ind["poms"] = df_ind["data"].apply(lambda x: x.get("poms", {}))
+
+                    # detalle contiene el análisis generado para cada resultado
+                    df_ind["detalle_parsed"] = df_ind["detalle"].apply(parse_json_field)
+
+                    # El puntaje y riesgo ya vienen directamente desde resultados
+                    df_ind["puntaje"] = pd.to_numeric(df_ind["puntaje"], errors="coerce")
+                    df_ind["riesgo"] = df_ind["riesgo"].fillna("N/A")
+
+                    # Perfil y POMS vienen dentro de detalle
+                    df_ind["perfil"] = df_ind["detalle_parsed"].apply(
+                        lambda x: x.get("resultado", {}).get("perfil")
+                        or x.get("Perfil", "N/A")
+                    )
+
+                    df_ind["poms"] = df_ind["detalle_parsed"].apply(
+                        lambda x: x.get("poms", {})
+                        if isinstance(x.get("poms", {}), dict)
+                        else {}
+                    )
+
+                    # respuestas contiene las respuestas originales de la encuesta
+                    df_ind["respuestas_parsed"] = df_ind["respuestas"].apply(parse_json_field)
+
+                    # Texto libre del estudiante
+                    df_ind["texto_libre"] = df_ind["respuestas_parsed"].apply(
+                        lambda x: x.get("texto_libre", "")
+                        or x.get("texto", "")
+                        or ""
+                    )
                     
 
                     # ── Resumen del estudiante ──────────────────
@@ -4219,7 +3866,7 @@ elif rol_seleccionado == "Psicólogo":
 
         elif st.session_state.menu_psicologo == "Casos prioritarios":
             st.title("🚨 Casos Prioritarios")
-            st.markdown("Estudiantes con riesgo alto que requieren seguimiento clínico.")
+            st.markdown("Estudiantes con riesgo alto que requieren seguimiento y orientación profesional.")
 
             df_prior = fetch_casos_prioritarios()
 
@@ -4228,7 +3875,7 @@ elif rol_seleccionado == "Psicólogo":
             else:
                 df_prior["detalle_json"]    = df_prior["detalle"].apply(safe_json_load)
                 df_prior["respuestas_json"] = df_prior["respuestas"].apply(safe_json_load)
-                df_prior["perfil"]          = df_prior["detalle_json"].apply(lambda x: x.get("Perfil", "N/A"))
+                df_prior["perfil"]          = df_prior["detalle_json"].apply(lambda x: x.get("resultado", {}).get("perfil", "N/A"))
                 df_prior["texto_libre"]     = df_prior["respuestas_json"].apply(lambda x: x.get("texto", ""))
 
                 st.markdown(f"**{len(df_prior)}** casos en riesgo alto detectados.")
@@ -4255,7 +3902,7 @@ elif rol_seleccionado == "Psicólogo":
                         else:
                             st.caption("El estudiante no escribió texto libre en esta sesión.")
 
-        elif st.session_state.menu_psicologo == "Dashboard historico":
+        elif st.session_state.menu_psicologo == "Dashboard histórico":
             show_dashboard_historico()
 
         elif st.session_state.menu_psicologo == "Acerca":
@@ -4264,4 +3911,4 @@ elif rol_seleccionado == "Psicólogo":
 # PIE DE PÁGINA
 # ================================================================
 st.markdown("---")
-st.caption("Todos los derechos reservados • Versión 3.0 • © 2026")
+st.caption("Todos los derechos reservados • Versión 4.0 • © 2026")

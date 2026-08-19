@@ -1,7 +1,7 @@
 """Configuración global, rutas y constantes de la aplicación."""
 import os
 
-import streamlit as st
+# streamlit import moved into configure_page() to allow CLI usage without Streamlit installed
 
 PAGE_CONFIG = {
     "page_title": "Plataforma de Detección Temprana",
@@ -21,8 +21,18 @@ AUDIO_FILE_PATH = "static/clic.wav"
 
 
 def configure_page() -> None:
-    """Aplica la configuración global de Streamlit."""
-    st.set_page_config(**PAGE_CONFIG)
+    """Aplica la configuración global de Streamlit.
+
+    Importa streamlit localmente para evitar que módulos que sólo necesitan
+    la configuración (como scripts CLI) fallen cuando Streamlit no está
+    instalado en el entorno.
+    """
+    try:
+        import streamlit as st
+        st.set_page_config(**PAGE_CONFIG)
+    except Exception:
+        # En entornos CLI o test donde Streamlit no está disponible, ignorar.
+        return
 
 
 def ensure_directories() -> None:

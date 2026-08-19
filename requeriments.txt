@@ -5,6 +5,7 @@ streamlit==1.32.0       # Framework principal de la app
 pandas==2.2.0           # Manejo de datos y tablas
 plotly==5.18.0          # Visualizaciones interactivas
 textblob==0.17.1        # Procesamiento de lenguaje natural
+vaderSentiment==3.3.2    # Análisis de sentimiento VADER
 scikit-learn==1.4.0     # Modelos de machine learning
 
 # ============================================

@@ -4,7 +4,10 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Optional, Union
 
-import pandas as pd
+try:
+    import pandas as pd
+except Exception:
+    pd = None  # pandas es opcional para ejecución CLI ligera (se usa en funciones de export/consulta avanzadas)
 
 from config import DB_PATH
 
@@ -89,7 +92,7 @@ def save_result(
         conn.close()
 
 
-def fetch_table_all(table: str) -> pd.DataFrame:
+def fetch_table_all(table: str) -> object:
     """SELECT * FROM una tabla (usuarios, encuestas, resultados, etc.)."""
     conn = get_conn()
     try:
@@ -98,11 +101,11 @@ def fetch_table_all(table: str) -> pd.DataFrame:
         conn.close()
 
 
-def fetch_resultados_all() -> pd.DataFrame:
+def fetch_resultados_all() -> object:
     return fetch_table_all("resultados")
 
 
-def fetch_usuarios_ids_ordered() -> pd.DataFrame:
+def fetch_usuarios_ids_ordered() -> object:
     conn = get_conn()
     try:
         return pd.read_sql_query(
@@ -130,7 +133,7 @@ def fetch_counts_resumen() -> tuple:
         conn.close()
 
 
-def fetch_riesgo_counts_por_resultado() -> pd.DataFrame:
+def fetch_riesgo_counts_por_resultado() -> object:
     """Agrupa cantidad de resultados por nivel de riesgo (semáforo docente)."""
     conn = get_conn()
     try:
@@ -149,7 +152,7 @@ def fetch_riesgo_counts_por_resultado() -> pd.DataFrame:
 
 def fetch_historial_usuario(
     usuario_id: int, *, include_respuestas_y_nivel: bool = False
-) -> pd.DataFrame:
+) -> object:
     """
     Evaluaciones de un usuario ordenadas por fecha descendente.
 
@@ -191,7 +194,7 @@ def fetch_historial_usuario(
         conn.close()
 
 
-def fetch_ultimas_sesiones_usuario_para_alertas(usuario_id, limit: int = 5) -> pd.DataFrame:
+def fetch_ultimas_sesiones_usuario_para_alertas(usuario_id, limit: int = 5) -> object:
     """Historial reciente para generate_smart_alerts (parametrizado)."""
     conn = get_conn()
     try:
@@ -211,13 +214,13 @@ def fetch_ultimas_sesiones_usuario_para_alertas(usuario_id, limit: int = 5) -> p
         conn.close()
 
 
-def fetch_resultados_clustering() -> pd.DataFrame:
+def fetch_resultados_clustering() -> object:
     """Datos para panel docente — clustering."""
     conn = get_conn()
     try:
         return pd.read_sql_query(
             """
-            SELECT r.id, r.puntaje, r.detalle, r.fecha, u.id as usuario_id, u.nivel
+            SELECT r.id, r.puntaje, r.riesgo, r.detalle, r.fecha, u.id as usuario_id, u.nivel
             FROM resultados r
             JOIN encuestas e ON r.encuesta_id = e.id
             JOIN usuarios u ON e.usuario_id = u.id
@@ -228,7 +231,7 @@ def fetch_resultados_clustering() -> pd.DataFrame:
         conn.close()
 
 
-def fetch_dashboard_historico() -> pd.DataFrame:
+def fetch_dashboard_historico() -> object:
     """Serie temporal completa para dashboard histórico (docente y psicólogo)."""
     conn = get_conn()
     try:
@@ -248,7 +251,7 @@ def fetch_dashboard_historico() -> pd.DataFrame:
         conn.close()
 
 
-def fetch_dashboard_profesional() -> pd.DataFrame:
+def fetch_dashboard_profesional() -> object:
     conn = get_conn()
     try:
         return pd.read_sql_query(
@@ -270,7 +273,7 @@ def fetch_dashboard_profesional() -> pd.DataFrame:
         conn.close()
 
 
-def fetch_alertas_riesgo_alto() -> pd.DataFrame:
+def fetch_alertas_riesgo_alto() -> object:
     """Casos en riesgo alto — vista alertas inteligentes (fecha desde encuesta)."""
     conn = get_conn()
     try:
@@ -297,14 +300,14 @@ def fetch_alertas_riesgo_alto() -> pd.DataFrame:
         conn.close()
 
 
-def fetch_casos_prioritarios() -> pd.DataFrame:
-    """Riesgo alto — vista casos prioritarios (fecha del resultado)."""
+def fetch_casos_prioritarios() -> object:
+    """Obtiene estudiantes cuyo resultado más reciente presenta riesgo alto."""
     conn = get_conn()
     try:
         return pd.read_sql_query(
             """
             SELECT
-                u.id as usuario_id,
+                u.id AS usuario_id,
                 u.nivel,
                 u.edad,
                 r.puntaje,
@@ -316,7 +319,15 @@ def fetch_casos_prioritarios() -> pd.DataFrame:
             JOIN encuestas e ON r.encuesta_id = e.id
             JOIN usuarios u ON e.usuario_id = u.id
             WHERE r.riesgo = 'Alto'
-            ORDER BY r.puntaje DESC
+              AND r.id IN (
+                  SELECT r2.id
+                  FROM resultados r2
+                  JOIN encuestas e2 ON r2.encuesta_id = e2.id
+                  WHERE e2.usuario_id = e.usuario_id
+                  ORDER BY r2.fecha DESC, r2.id DESC
+                  LIMIT 1
+              )
+            ORDER BY r.puntaje DESC, r.fecha DESC
             """,
             conn,
         )
@@ -324,7 +335,7 @@ def fetch_casos_prioritarios() -> pd.DataFrame:
         conn.close()
 
 
-def fetch_pdf_resultados_por_usuario(usuario_id: Optional[int] = None) -> pd.DataFrame:
+def fetch_pdf_resultados_por_usuario(usuario_id: Optional[int] = None) -> object:
     """Datos para generar_pdf_profesional_bytes (individual o general)."""
     conn = get_conn()
     try:
